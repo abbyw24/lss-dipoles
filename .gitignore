@@ -1,0 +1,6 @@
+# ignore any [ ] file in research directory or sub-directory
+*.npy
+*.png
+*.dat
+*.pyc
+notebooks/.ipynb_checkpoints/
