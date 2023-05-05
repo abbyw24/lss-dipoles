@@ -3,4 +3,5 @@
 *.png
 *.dat
 *.pyc
+*.csv
 notebooks/.ipynb_checkpoints/
