@@ -15,17 +15,14 @@ def thetaphi_to_radec(theta, phi):
     dec = 90 - phi * 180/np.pi
     return ra, dec
 
-def dipole(ra, dec, dipamps):
-    """Return the signal contribution from the dipole at a certain sky location (ra,dec)."""
-    dx, dy, dz = dipamps
-    theta, phi = radec_to_thetaphi(ra, dec)
-    return dx*np.sin(theta)*np.cos(phi) + dy*np.sin(theta)*np.sin(phi) + dz*np.cos(theta)
+def dipole(theta, phi, dipole_x, dipole_y, dipole_z):
+    """Return the signal contribution from the dipole at a certain sky location (theta,phi)."""
+    return dipole_x*np.sin(theta)*np.cos(phi) + dipole_y*np.sin(theta)*np.sin(phi) + dipole_z*np.cos(theta)
 
 def dipole_map(amps, NSIDE=64):
     """Generate a healpy dipole map (equatorial coordinates) given four parameters:
        the monopole plus three dipole amplitudes."""
     NPIX = hp.nside2npix(NSIDE)  # number of pixels
     theta, phi = hp.pix2ang(NSIDE, ipix=np.arange(NPIX))  # get (theta,phi) coords of each pixel
-    ra, dec = thetaphi_to_radec(theta, phi)  # convert (theta,phi)->(RA,Dec)
-    dip = dipole(ra, dec, amps[1:])  # expected dipole: shape==(NPIX,)
+    dip = dipole(theta, phi, **amps[1:])  # expected dipole: shape==(NPIX,)
     return amps[0] + dip
