@@ -1,30 +1,23 @@
 """
 GOAL: Model the dipole in the selection function.
 
-SF = Kate's(GP) cost function + dip_amps
+SF = GP(=Kate's maps) + mean function(=monopole+dipole)
 
-dip_amps = ln(dN/dOmega) + 3 dipole templates (Ylms)
-
-"""
-
-"""
-questions:
-- fit_zeros? why would we want to fit/not fit zero pixels? what does this change about the result?
-- where do the threshold values in map_expected_to_probability() come from, for the different maps?
-- generally, is the reason we scale data logarithmically to make computation faster?
-- why do we take the log of the stars map but not the others?
 """
 
 
 import numpy as np
 import time
+import os
+import sys
 
 from scipy.optimize import minimize
 import healpy as hp
 import george
+from george.modeling import Model
 
-import os
-import sys
+from dipole import dipole
+
 sys.path.insert(0, '/home/aew492/gaia-quasars-lss/code')
 import utils
 import masks
@@ -42,18 +35,20 @@ def main():
     x_scale_name = 'zeromean'
     y_scale_name = 'log'
     fit_zeros = False
+    shorten_arrays = False
+    nshort = 1000
 
     # save file
     data_dir = '/scratch/aew492/quasars'
     maps_dir = os.path.join(data_dir, 'maps')
     if not os.path.exists(maps_dir):
         os.makedirs(maps_dir)
-    fn_prob = os.path.join(maps_dir, f'/scratch/aew492/quasars/maps/selection_function_NSIDE{NSIDE}_G{G_max}_abby.fits')
+    fn_prob = os.path.join(maps_dir, f'/scratch/aew492/quasars/maps/selection_function_NSIDE{NSIDE}_G{G_max}_dipole.fits')
     overwrite = True
 
     start = time.time()
 
-    # load QUaia table
+    ## LOAD DATA
     print("Loading data", flush=True)
     cat_dir = os.path.join(data_dir, 'catalogs')
     if not os.path.exists(cat_dir):
@@ -66,15 +61,19 @@ def main():
     maps_forsel = load_maps(NSIDE, map_names)
     map_nqso_data, _ = maps.get_map(NSIDE, tab_gaia['ra'], tab_gaia['dec'], null_val=0)
 
-    # CONSTRUCT vectors for fit: X = design matrix = maps, y = data = QUaia
+
+    ## CONSTRUCT FULL ARRAYS
     print("Constructing X and y", flush=True)
     NPIX = hp.nside2npix(NSIDE)
     X_train_full = construct_X(NPIX, map_names, maps_forsel)
     y_train_full = map_nqso_data
-    # need this because will be inserting small vals where zero
-    y_train_full = y_train_full.astype(float)
+    y_train_full = y_train_full.astype(float)  # need this because will be inserting small vals where zero
+    y_err_train_full = np.sqrt(y_train_full)  # assume poisson error
 
+
+    ## INDICES TO FIT
     print("Getting indices to fit", flush=True)
+    print("full map:", len(y_train_full))
     # should i do this in fitter??
     if fit_zeros:
         if y_scale_name=='log':
@@ -85,6 +84,7 @@ def main():
         print('min post', np.min(y_train_full), flush=True)
     else:
         idx_fit = y_train_full > 0
+    print("idx_fit:", len(idx_fit))
 
     if fit_with_mask_mcs:
         mask_mcs = masks.magellanic_clouds_mask(NSIDE)
@@ -92,15 +92,21 @@ def main():
         # i think nomcs is breaking everything! #TODO check
         idx_fit = idx_fit & idx_nomcs
 
-    y_err_train_full = np.sqrt(y_train_full) # assume poisson error
-
     X_train = X_train_full[idx_fit]
     y_train = y_train_full[idx_fit]
     y_err_train = y_err_train_full[idx_fit]
     print(np.min(y_train))
 
+    if shorten_arrays:
+        print("Shortening arrays for fit")
+        idx = np.arange(nshort)
+        X_train = X_train[idx]
+        y_train = y_train[idx]
+        y_err_train = y_err_train[idx]
+        print("idx:", len(idx))
 
-    # TRAIN FITTER
+
+    ## TRAIN FITTER
     print("Training fitter", flush=True)
     print("X_train:", X_train.shape, "y_train:", y_train.shape, flush=True)
     fitter = FitterGP(X_train, y_train, y_err_train, 
@@ -109,9 +115,10 @@ def main():
     # predict: the expected QUaia data
     print("Predicting", flush=True)
     y_pred = fitter.predict(X_train)
+    print("y_pred:", len(y_pred))
 
     y_pred_full = np.zeros(y_train_full.shape)
-    y_pred_full[idx_fit] = y_pred
+    y_pred_full[idx] = y_pred
 
     # get rms error between the training set ("truth" QUaia map) and the predicted set (expected QUaia map)
     print('RMSE:', utils.compute_rmse(y_pred_full, y_train_full), flush=True)
@@ -119,6 +126,8 @@ def main():
     # make probability map
     print("Making probability map", flush=True)
     map_prob = map_expected_to_probability(y_pred_full, y_train_full, map_names, maps_forsel)
+
+    # fails without proper len(map_prob)
     hp.write_map(fn_prob, map_prob, overwrite=overwrite)
     print(f"Saved map to {fn_prob}!", flush=True)
 
@@ -152,7 +161,6 @@ def map_expected_to_probability(map_expected, map_true, map_names, maps_forsel):
     assert np.all(map_prob <= 1.0) and np.all(map_prob >= 0.0), "Probabilities must be <=1 and >=0!"
     return map_prob
 
-
 # def load_maps(NSIDE, map_names):
 #     maps_forsel = []
 #     # TODO: should be writing these maps with hp.write_map() to a fits file!
@@ -169,7 +177,6 @@ def map_expected_to_probability(map_expected, map_true, map_names, maps_forsel):
 #         maps_forsel.append( map_functions[map_name](NSIDE=NSIDE, fn_map=fn_map) )
 #     return maps_forsel
 
-
 ### ABBY'S VERSION
 def load_maps(NSIDE, map_names, maps_dir='/scratch/aew492/quasars/maps'):
     maps_forsel = []
@@ -179,25 +186,20 @@ def load_maps(NSIDE, map_names, maps_dir='/scratch/aew492/quasars/maps'):
         maps_forsel.append(np.load(map_fn))
     return maps_forsel
 
-
 def f_dust(map_d):
     return map_d
-
 
 def f_stars(map_s):
     return np.log(map_s)
 
-
 def f_m10(map_m):
     return map_m
-
 
 def f_mcs(map_mcs):
     map_mcs = map_mcs.astype(float)
     i_zeroorneg = map_mcs < 1e-4
     map_mcs[i_zeroorneg] = 1e-4
     return np.log(map_mcs)
-
 
 def construct_X(NPIX, map_names, maps_forsel):
     f_dict = {'dust': f_dust,
@@ -223,7 +225,6 @@ class Fitter():
         self.y_train_scaled = self.scale_y(self.y_train)
         self.y_err_train_scaled = self.scale_y_err(self.y_err_train)
 
-
     def scale_y_err(self, y_err):
         if self.y_scale_name=='log':
             return y_err / self.y_train
@@ -239,13 +240,11 @@ class Fitter():
             X_scaled -= np.mean(X_scaled, axis=0)
         return X_scaled
 
-
     def scale_y(self, y):
         y_scaled = y.copy()
         if self.y_scale_name=='log':
             y_scaled = np.log(y)
         return y_scaled
-
 
     def unscale_y(self, y_scaled):
         y_unscaled = y_scaled.copy()
@@ -253,10 +252,8 @@ class Fitter():
             y_unscaled = np.exp(y_scaled)
         return y_unscaled
 
-
     def train(self):
         pass
-
 
     def predict(self, X_pred):
         pass
@@ -271,26 +268,20 @@ class FitterGP(Fitter):
         ndim = self.X_train.shape[1]
         n_params = self.X_train_scaled.shape[1]
         print("n params:", n_params)
-        p0 = np.exp(np.full(n_params, 0.1))
-        kernel = george.kernels.ExpSquaredKernel(p0, ndim=ndim)
-
-        #print("using hodlr solver")
-        #self.gp = george.GP(kernel, solver=george.HODLRSolver)
-        self.gp = george.GP(kernel)
+        kernel_p0 = np.exp(np.full(n_params, 0.1))
+        kernel = george.kernels.ExpSquaredKernel(kernel_p0, ndim=ndim)
+        mean_p0 = [2., 0., 0., 0.] # monopole + 3 dipole amplitudes
+        self.gp = george.GP(kernel, mean=DipoleModel(*mean_p0), fit_mean=True)
         print('p init:', self.gp.get_parameter_vector())
-        print(self.X_train_scaled)
-        print(self.y_err_train_scaled)
         # pre-compute the covariance matrix and factorize it for a set of times and uncertainties
         self.gp.compute(self.X_train_scaled, self.y_err_train_scaled)
         print('p compute:', self.gp.get_parameter_vector())
         print('lnlike compute:', self.gp.log_likelihood(self.y_train_scaled))
 
-        # negative loglike
         def neg_ln_like(p):
             self.gp.set_parameter_vector(p)
             return -self.gp.log_likelihood(self.y_train_scaled)
 
-        # gradient of the neg loglike (jacobian to maximize loglike)
         def grad_neg_ln_like(p):
             self.gp.set_parameter_vector(p)
             return -self.gp.grad_log_likelihood(self.y_train_scaled)
@@ -308,6 +299,22 @@ class FitterGP(Fitter):
         print('predict p:', self.gp.get_parameter_vector())
         y_pred_scaled, _ = self.gp.predict(self.y_train_scaled, X_pred_scaled)
         return self.unscale_y(y_pred_scaled)
+
+
+class DipoleModel(Model):
+    parameter_names = ('monopole', 'dipole_x', 'dipole_y', 'dipole_z')
+    # figure out how to pass NSIDE!
+    NSIDE = 64
+    NPIX = hp.nside2npix(NSIDE)
+    thetas, phis = hp.pix2ang(NSIDE, ipix=np.arange(NPIX))
+    
+    def get_value(self, X):
+        idx = np.arange(X.shape[0])
+        return self.monopole + dipole(DipoleModel.thetas[idx], DipoleModel.phis[idx],
+                                      self.dipole_x, self.dipole_y, self.dipole_z)
+    
+    def set_vector(self, v):
+        self.monopole, self.dipole_x, self.dipole_y, self.dipole_z = v
 
 
 if __name__=='__main__':
