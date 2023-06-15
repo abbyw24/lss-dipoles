@@ -31,19 +31,19 @@ def main():
     map_names = ['dust', 'stars', 'm10', 'mcs']
     NSIDE = 64
     G_max = 20.5
-    fit_with_mask_mcs = False
     x_scale_name = 'zeromean'
     y_scale_name = 'log'
     fit_zeros = False
-    shorten_arrays = False
-    nshort = 1000
+    shorten_arrays = True
+    nshort = 10000
+    random_pix = True
 
     # save file
     data_dir = '/scratch/aew492/quasars'
     maps_dir = os.path.join(data_dir, 'maps')
     if not os.path.exists(maps_dir):
         os.makedirs(maps_dir)
-    fn_prob = os.path.join(maps_dir, f'/scratch/aew492/quasars/maps/selection_function_NSIDE{NSIDE}_G{G_max}_dipole.fits')
+    fn_prob = os.path.join(maps_dir, f'/scratch/aew492/quasars/maps/selection_function_NSIDE{NSIDE}_G{G_max}_dipole_{nshort}pix.fits')
     overwrite = True
 
     start = time.time()
@@ -73,7 +73,7 @@ def main():
 
     ## INDICES TO FIT
     print("Getting indices to fit", flush=True)
-    print("full map:", len(y_train_full))
+    print("full map:", len(y_train_full), flush=True)
     # should i do this in fitter??
     if fit_zeros:
         if y_scale_name=='log':
@@ -84,26 +84,22 @@ def main():
         print('min post', np.min(y_train_full), flush=True)
     else:
         idx_fit = y_train_full > 0
-    print("idx_fit:", len(idx_fit))
-
-    if fit_with_mask_mcs:
-        mask_mcs = masks.magellanic_clouds_mask(NSIDE)
-        idx_nomcs = ~mask_mcs #because mask is 1 where masked
-        # i think nomcs is breaking everything! #TODO check
-        idx_fit = idx_fit & idx_nomcs
+        print("removed zeros ->", np.sum(idx_fit), flush=True)
+    
+    if shorten_arrays:
+        idx_short = np.full(len(y_train_full), False)
+        if random_pix:
+            idx_rand = np.random.choice(NPIX, size=nshort)
+            idx_short[idx_rand] = True
+        else:
+            idx_short[:nshort] = True
+        idx_fit = idx_fit & idx_short
+        print("shortened arrays ->", np.sum(idx_fit), flush=True)
 
     X_train = X_train_full[idx_fit]
     y_train = y_train_full[idx_fit]
     y_err_train = y_err_train_full[idx_fit]
-    print(np.min(y_train))
-
-    if shorten_arrays:
-        print("Shortening arrays for fit")
-        idx = np.arange(nshort)
-        X_train = X_train[idx]
-        y_train = y_train[idx]
-        y_err_train = y_err_train[idx]
-        print("idx:", len(idx))
+    assert np.min(y_train)==1.
 
 
     ## TRAIN FITTER
@@ -115,10 +111,10 @@ def main():
     # predict: the expected QUaia data
     print("Predicting", flush=True)
     y_pred = fitter.predict(X_train)
-    print("y_pred:", len(y_pred))
+    print("y_pred:", len(y_pred), flush=True)
 
     y_pred_full = np.zeros(y_train_full.shape)
-    y_pred_full[idx] = y_pred
+    y_pred_full[idx_fit] = y_pred
 
     # get rms error between the training set ("truth" QUaia map) and the predicted set (expected QUaia map)
     print('RMSE:', utils.compute_rmse(y_pred_full, y_train_full), flush=True)
@@ -161,23 +157,6 @@ def map_expected_to_probability(map_expected, map_true, map_names, maps_forsel):
     assert np.all(map_prob <= 1.0) and np.all(map_prob >= 0.0), "Probabilities must be <=1 and >=0!"
     return map_prob
 
-# def load_maps(NSIDE, map_names):
-#     maps_forsel = []
-#     # TODO: should be writing these maps with hp.write_map() to a fits file!
-#     map_functions = {'stars': maps.get_star_map,
-#                      'dust': maps.get_dust_map,
-#                      'm10': maps.get_m10_map,
-#                      'mcs': maps.get_mcs_map}
-
-#     for map_name in map_names:
-#         maps_dir = '/scratch/aew492/quasars/maps'
-#         if not os.path.exists(maps_dir):
-#             os.makedirs(maps_dir)
-#         fn_map = os.path.join(maps_dir, f'fmap_{map_name}_NSIDE{NSIDE}.npy')
-#         maps_forsel.append( map_functions[map_name](NSIDE=NSIDE, fn_map=fn_map) )
-#     return maps_forsel
-
-### ABBY'S VERSION
 def load_maps(NSIDE, map_names, maps_dir='/scratch/aew492/quasars/maps'):
     maps_forsel = []
     for map_name in map_names:
@@ -213,7 +192,7 @@ def construct_X(NPIX, map_names, maps_forsel):
 class Fitter():
 
     def __init__(self, X_train, y_train, y_err_train, x_scale_name=None, y_scale_name=None):
-        # TODO: add asserts that these are the right shapes
+        assert X_train.shape[0]==y_train.shape[0]==y_err_train.shape[0], "check input array sizes!"
         self.X_train = X_train
         self.y_train = y_train
         self.y_err_train = y_err_train
