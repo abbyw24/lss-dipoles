@@ -24,5 +24,5 @@ def dipole_map(amps, NSIDE=64):
        the monopole plus three dipole amplitudes."""
     NPIX = hp.nside2npix(NSIDE)  # number of pixels
     theta, phi = hp.pix2ang(NSIDE, ipix=np.arange(NPIX))  # get (theta,phi) coords of each pixel
-    dip = dipole(theta, phi, **amps[1:])  # expected dipole: shape==(NPIX,)
+    dip = dipole(theta, phi, *amps[1:])  # expected dipole: shape==(NPIX,)
     return amps[0] + dip
