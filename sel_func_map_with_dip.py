@@ -8,6 +8,7 @@ SF = GP(=Kate's maps) + mean function(=monopole+dipole)
 
 import numpy as np
 import time
+from datetime import datetime
 import os
 import sys
 
@@ -25,7 +26,7 @@ import maps
 
 
 def main():
-    print("starting selection function", flush=True)
+    print("Starting selection function", flush=True)
 
     # parameters
     map_names = ['dust', 'stars', 'm10', 'mcs']
@@ -35,15 +36,17 @@ def main():
     y_scale_name = 'log'
     fit_zeros = False
     shorten_arrays = True
-    nshort = 10000
+    nshort = 30000
     random_pix = True
+    save_map = True
+    save_res = True
 
     # save file
     data_dir = '/scratch/aew492/quasars'
     maps_dir = os.path.join(data_dir, 'maps')
     if not os.path.exists(maps_dir):
         os.makedirs(maps_dir)
-    fn_prob = os.path.join(maps_dir, f'/scratch/aew492/quasars/maps/selection_function_NSIDE{NSIDE}_G{G_max}_dipole_{nshort}pix.fits')
+    fn_prob = os.path.join(maps_dir, f'/scratch/aew492/quasars/maps/selection_function_NSIDE{NSIDE}_G{G_max}_dipole_{nshort}pix')
     overwrite = True
 
     start = time.time()
@@ -99,7 +102,8 @@ def main():
     X_train = X_train_full[idx_fit]
     y_train = y_train_full[idx_fit]
     y_err_train = y_err_train_full[idx_fit]
-    assert np.min(y_train)==1.
+    print(np.min(y_train), flush=True)
+    # assert np.min(y_train)==1.
 
 
     ## TRAIN FITTER
@@ -107,7 +111,7 @@ def main():
     print("X_train:", X_train.shape, "y_train:", y_train.shape, flush=True)
     fitter = FitterGP(X_train, y_train, y_err_train, 
                       x_scale_name=x_scale_name, y_scale_name=y_scale_name)
-    fitter.train()
+    fitter.train(maxiter=None)
     # predict: the expected QUaia data
     print("Predicting", flush=True)
     y_pred = fitter.predict(X_train)
@@ -123,12 +127,16 @@ def main():
     print("Making probability map", flush=True)
     map_prob = map_expected_to_probability(y_pred_full, y_train_full, map_names, maps_forsel)
 
-    # fails without proper len(map_prob)
-    hp.write_map(fn_prob, map_prob, overwrite=overwrite)
-    print(f"Saved map to {fn_prob}!", flush=True)
+    if save_map:
+        hp.write_map(fn_prob, map_prob, overwrite=overwrite)
+        print(f"Saved map to {fn_prob}!", flush=True)
+
+    if save_res:
+        res_fn = fn_prob+'-res'
+        np.save(res_fn, fitter.result)
 
     end = time.time()
-    print(f"Time: {end-start} s ({(end-start)/60.} min)", flush=True)
+    print(f"Time: {end-start:.2f} s ({(end-start)/60.:.2f} min)", flush=True)
 
 
 #hack! better way?
@@ -204,6 +212,14 @@ class Fitter():
         self.y_train_scaled = self.scale_y(self.y_train)
         self.y_err_train_scaled = self.scale_y_err(self.y_err_train)
 
+        # for callback
+        self.num_calls = 0 # how many times the likelihood function has been called
+        self.callback_count = 0 # number of times callback has been called (measures iteration count)
+        self.inputs = [] # input of all calls
+        self.lnlikes = [] # result of all calls
+        self.callback_inputs = [] # only appends inputs on callback, as such they correspond to the iterations
+        self.callback_lnlikes = [] # only appends results on callback, as such they correspond to the iterations
+
     def scale_y_err(self, y_err):
         if self.y_scale_name=='log':
             return y_err / self.y_train
@@ -243,7 +259,7 @@ class FitterGP(Fitter):
         super().__init__(*args, **kwargs)
 
 
-    def train(self):
+    def train(self, maxiter=None):
         ndim = self.X_train.shape[1]
         n_params = self.X_train_scaled.shape[1]
         print("n params:", n_params)
@@ -257,27 +273,70 @@ class FitterGP(Fitter):
         print('p compute:', self.gp.get_parameter_vector())
         print('lnlike compute:', self.gp.log_likelihood(self.y_train_scaled))
 
-        def neg_ln_like(p):
+        def neg_ln_like(p): #, info):
             self.gp.set_parameter_vector(p)
-            return -self.gp.log_likelihood(self.y_train_scaled)
+            lnlike = self.gp.log_likelihood(self.y_train_scaled)
+            if not self.num_calls: # if first call- store in all lists
+                self.callback_inputs.append(p)
+                self.callback_lnlikes.append(lnlike)
+            self.inputs.append(p)
+            self.lnlikes.append(lnlike)
+            self.num_calls += 1
+            return -lnlike
 
-        def grad_neg_ln_like(p):
+        def grad_neg_ln_like(p): #, info):
             self.gp.set_parameter_vector(p)
             return -self.gp.grad_log_likelihood(self.y_train_scaled)
 
-        print("Minimizing")
-        result = minimize(neg_ln_like, self.gp.get_parameter_vector(), jac=grad_neg_ln_like)
-        print(result)
+        print("Minimizing", flush=True)
+        print("current time:", datetime.now().strftime("%H:%M:%S"), flush=True)
+
+        result = minimize(neg_ln_like, self.gp.get_parameter_vector(), jac=grad_neg_ln_like, callback=self.callback,
+                            options=dict(maxiter=maxiter, disp=True))
+        self.result = result
         self.gp.set_parameter_vector(result.x)
         print('p post op:', self.gp.get_parameter_vector())
-        print('lnlike final:', self.gp.log_likelihood(self.y_train_scaled))
+        # print('lnlike final:', self.gp.log_likelihood(self.y_train_scaled))
 
     
     def predict(self, X_pred):
         X_pred_scaled = self.scale_X(X_pred)
-        print('predict p:', self.gp.get_parameter_vector())
+        # print('predict p:', self.gp.get_parameter_vector())
         y_pred_scaled, _ = self.gp.predict(self.y_train_scaled, X_pred_scaled)
         return self.unscale_y(y_pred_scaled)
+    
+
+    def callback(self, xk, *_):
+        """Callback function for scipy.optimize.minimize.
+        "*_" makes sure that it still works when the optimizer calls the callback function with more than one argument.
+        xk = current parameter vector """
+        xk = np.atleast_1d(xk)
+        # search backwards in input list for input corresponding to xk
+        for i, x in reversed(list(enumerate(self.inputs))):
+            x = np.atleast_1d(x)
+            if np.allclose(x, xk):
+                break 
+        # if first callback, print labels
+        if not self.callback_count:
+            s0 = f"niter\t"
+            for j, _ in enumerate(xk):
+                label = f"param-{j+1}"
+                s0 += f"{label:8s}\t"
+            s0 += "{:8s}\t".format("lnlike")
+            s0 += "time"
+            print(s0, flush=True)
+        # print current values
+        s1 = f"{self.callback_count}\t"
+        for comp in xk:
+            s1 += f"{comp:8.6f}\t"  # parameter vector
+        s1 += f"{self.lnlikes[i]:8.6f}\t"  # likelihood
+        # time for this iteration
+        s1 += datetime.now().strftime("%H:%M:%S")
+        print(s1, flush=True)
+
+        self.callback_inputs.append(xk)
+        self.callback_lnlikes.append(self.lnlikes[i])
+        self.callback_count += 1
 
 
 class DipoleModel(Model):
@@ -286,6 +345,8 @@ class DipoleModel(Model):
     NSIDE = 64
     NPIX = hp.nside2npix(NSIDE)
     thetas, phis = hp.pix2ang(NSIDE, ipix=np.arange(NPIX))
+    print("theta:", min(thetas), max(thetas), flush=True)
+    print("phi:", min(phis), max(phis), flush=True)
     
     def get_value(self, X):
         idx = np.arange(X.shape[0])
