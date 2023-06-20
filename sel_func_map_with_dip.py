@@ -35,8 +35,8 @@ def main():
     x_scale_name = 'zeromean'
     y_scale_name = 'log'
     fit_zeros = False
-    shorten_arrays = True
-    nshort = 30000
+    shorten_arrays = False
+    nshort = 10000
     random_pix = True
     save_map = True
     save_res = True
@@ -46,7 +46,8 @@ def main():
     maps_dir = os.path.join(data_dir, 'maps')
     if not os.path.exists(maps_dir):
         os.makedirs(maps_dir)
-    fn_prob = os.path.join(maps_dir, f'/scratch/aew492/quasars/maps/selection_function_NSIDE{NSIDE}_G{G_max}_dipole_{nshort}pix')
+    shorttag = f'_{nshort}pix' if shorten_arrays else ''
+    fn_prob = os.path.join(maps_dir, f'/scratch/aew492/quasars/maps/selection_function_NSIDE{NSIDE}_G{G_max}_dipole{shorttag}')
     overwrite = True
 
     start = time.time()
@@ -217,8 +218,6 @@ class Fitter():
         self.callback_count = 0 # number of times callback has been called (measures iteration count)
         self.inputs = [] # input of all calls
         self.lnlikes = [] # result of all calls
-        self.callback_inputs = [] # only appends inputs on callback, as such they correspond to the iterations
-        self.callback_lnlikes = [] # only appends results on callback, as such they correspond to the iterations
 
     def scale_y_err(self, y_err):
         if self.y_scale_name=='log':
@@ -273,18 +272,15 @@ class FitterGP(Fitter):
         print('p compute:', self.gp.get_parameter_vector())
         print('lnlike compute:', self.gp.log_likelihood(self.y_train_scaled))
 
-        def neg_ln_like(p): #, info):
+        def neg_ln_like(p):
             self.gp.set_parameter_vector(p)
             lnlike = self.gp.log_likelihood(self.y_train_scaled)
-            if not self.num_calls: # if first call- store in all lists
-                self.callback_inputs.append(p)
-                self.callback_lnlikes.append(lnlike)
             self.inputs.append(p)
             self.lnlikes.append(lnlike)
             self.num_calls += 1
             return -lnlike
 
-        def grad_neg_ln_like(p): #, info):
+        def grad_neg_ln_like(p):
             self.gp.set_parameter_vector(p)
             return -self.gp.grad_log_likelihood(self.y_train_scaled)
 
@@ -297,14 +293,12 @@ class FitterGP(Fitter):
         self.gp.set_parameter_vector(result.x)
         print('p post op:', self.gp.get_parameter_vector())
         # print('lnlike final:', self.gp.log_likelihood(self.y_train_scaled))
-
     
     def predict(self, X_pred):
         X_pred_scaled = self.scale_X(X_pred)
         # print('predict p:', self.gp.get_parameter_vector())
         y_pred_scaled, _ = self.gp.predict(self.y_train_scaled, X_pred_scaled)
         return self.unscale_y(y_pred_scaled)
-    
 
     def callback(self, xk, *_):
         """Callback function for scipy.optimize.minimize.
@@ -315,27 +309,22 @@ class FitterGP(Fitter):
         for i, x in reversed(list(enumerate(self.inputs))):
             x = np.atleast_1d(x)
             if np.allclose(x, xk):
-                break 
+                break
         # if first callback, print labels
         if not self.callback_count:
             s0 = f"niter\t"
-            for j, _ in enumerate(xk):
-                label = f"param-{j+1}"
-                s0 += f"{label:8s}\t"
-            s0 += "{:8s}\t".format("lnlike")
-            s0 += "time"
+            colnames = ['monopole', 'dipole_x', 'dipole_y', 'dipole_z',
+                            'kparam-1', 'kparam-2', 'kparam-3', 'kparam-4', 'lnlike', 'ncalls', 'time']
+            for colname in colnames:
+                s0 += f"{colname:8s}\t"
             print(s0, flush=True)
         # print current values
         s1 = f"{self.callback_count}\t"
         for comp in xk:
             s1 += f"{comp:8.6f}\t"  # parameter vector
-        s1 += f"{self.lnlikes[i]:8.6f}\t"  # likelihood
-        # time for this iteration
-        s1 += datetime.now().strftime("%H:%M:%S")
+        # likelihood, number of function (lnlike) calls, and time for this iteration
+        s1 += f"{self.lnlikes[i]:8.6f}\t" + f"{i:8d}\t" + datetime.now().strftime("%H:%M:%S")
         print(s1, flush=True)
-
-        self.callback_inputs.append(xk)
-        self.callback_lnlikes.append(self.lnlikes[i])
         self.callback_count += 1
 
 
