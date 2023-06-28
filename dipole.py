@@ -5,16 +5,17 @@ Get the expected number-count dipole in a healpy map.
 import numpy as np
 import healpy as hp
 
-def radec_to_thetaphi(ra, dec):
-    theta = ra * np.pi/180
-    phi = (90 - dec) * np.pi/180
-    return theta, phi
+## COORDINATE TRANSFORMATIONS ##
+def xyz_to_phitheta(xyz):
+    """Given (x,y,z), return (phi,theta) coordinates on the sphere, where phi=LON and theta=LAT."""
+    x, y, z = xyz
+    r = np.linalg.norm(xyz)
+    phi = np.arctan2(y,x)
+    theta = np.arccos(z/r)
+    return phi, theta
 
-def thetaphi_to_radec(theta, phi):
-    ra = theta * 180/np.pi
-    dec = 90 - phi * 180/np.pi
-    return ra, dec
 
+## DIPOLE CONTRIBUTIONS ##
 def dipole(theta, phi, dipole_x, dipole_y, dipole_z):
     """Return the signal contribution from the dipole at a certain sky location (theta,phi)."""
     return dipole_x*np.sin(theta)*np.cos(phi) + dipole_y*np.sin(theta)*np.sin(phi) + dipole_z*np.cos(theta)
