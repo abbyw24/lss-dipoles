@@ -24,20 +24,27 @@ import utils
 import masks
 import maps
 
+NSIDE = 64
+PIXEL_INDICES_TO_FIT = np.array([]).astype(int)
 
 def main():
     print("Starting selection function", flush=True)
 
     # parameters
     map_names = ['dust', 'stars', 'm10', 'mcs']
-    NSIDE = 64
     G_max = 20.5
     x_scale_name = 'zeromean'
     y_scale_name = 'log'
     fit_zeros = False
+
+    # shorten arrays: if phi_slice is True, nshort is not used, only bounds on phi;
+    #   if random_pix and phi_slice are both False, we take the first nshort pixels in the healpy map (default RING)
     shorten_arrays = False
-    nshort = 10000
-    random_pix = True
+    nshort = 100
+    random_pix = False
+    phi_slice = True
+    minphi = 0
+    maxphi = np.pi/4
     save_map = True
     save_res = True
 
@@ -46,8 +53,16 @@ def main():
     maps_dir = os.path.join(data_dir, 'maps')
     if not os.path.exists(maps_dir):
         os.makedirs(maps_dir)
-    shorttag = f'_{nshort}pix' if shorten_arrays else ''
-    fn_prob = os.path.join(maps_dir, f'/scratch/aew492/quasars/maps/selection_function_NSIDE{NSIDE}_G{G_max}_dipole{shorttag}')
+    shorttag = ''
+    if shorten_arrays:
+        if random_pix:
+            shorttag += f'_{nshort}randpix'
+        elif phi_slice:
+            shorttag += f'_phi-{minphi:.2f}-{maxphi:.2f}'
+        else:
+            shorttag += f'_{nshort}pix'
+    maptag = f'_{map_names[0]}only' if len(map_names)==1 else ''
+    fn_prob = os.path.join(maps_dir, f'/scratch/aew492/quasars/maps/selection_function_NSIDE{NSIDE}_G{G_max}_dipole{shorttag}{maptag}')
     overwrite = True
 
     start = time.time()
@@ -93,12 +108,19 @@ def main():
     if shorten_arrays:
         idx_short = np.full(len(y_train_full), False)
         if random_pix:
+            assert phi_slice == False
             idx_rand = np.random.choice(NPIX, size=nshort)
             idx_short[idx_rand] = True
+        elif phi_slice:
+            _, phis = hp.pix2ang(NSIDE, ipix=np.arange(NPIX))  # phis = LON -> [0,2pi] ; len(phis)==NPIX
+            idx_short[(phis>minphi) & (phis<maxphi)] = True
         else:
             idx_short[:nshort] = True
         idx_fit = idx_fit & idx_short
         print("shortened arrays ->", np.sum(idx_fit), flush=True)
+
+    PIXEL_INDICES_TO_FIT = np.arange(NPIX)[idx_fit]
+    print(PIXEL_INDICES_TO_FIT.shape)
 
     X_train = X_train_full[idx_fit]
     y_train = y_train_full[idx_fit]
@@ -106,13 +128,30 @@ def main():
     print(np.min(y_train), flush=True)
     # assert np.min(y_train)==1.
 
+    # define mean function
+    class DipoleModel(Model):
+        """
+        BUGS:
+        - This class will only operate if there's a global variable called NSIDE
+        and a global variable called PIXEL_INDICES_TO_FIT.
+        """
+        parameter_names = ('monopole', 'dipole_x', 'dipole_y', 'dipole_z')
+        thetas, phis = hp.pix2ang(NSIDE, ipix=PIXEL_INDICES_TO_FIT)
+        
+        def get_value(self, X):
+            return self.monopole + dipole(DipoleModel.thetas, DipoleModel.phis,
+                                        self.dipole_x, self.dipole_y, self.dipole_z)
+        
+        def set_vector(self, v):
+            self.monopole, self.dipole_x, self.dipole_y, self.dipole_z = v
 
     ## TRAIN FITTER
     print("Training fitter", flush=True)
     print("X_train:", X_train.shape, "y_train:", y_train.shape, flush=True)
     fitter = FitterGP(X_train, y_train, y_err_train, 
-                      x_scale_name=x_scale_name, y_scale_name=y_scale_name)
-    fitter.train(maxiter=None)
+                      x_scale_name=x_scale_name, y_scale_name=y_scale_name,
+                      mean_model=DipoleModel)
+    fitter.train(maxiter=15)
     # predict: the expected QUaia data
     print("Predicting", flush=True)
     y_pred = fitter.predict(X_train)
@@ -128,13 +167,15 @@ def main():
     print("Making probability map", flush=True)
     map_prob = map_expected_to_probability(y_pred_full, y_train_full, map_names, maps_forsel)
 
-    if save_map:
-        hp.write_map(fn_prob, map_prob, overwrite=overwrite)
-        print(f"Saved map to {fn_prob}!", flush=True)
-
     if save_res:
         res_fn = fn_prob+'-res'
         np.save(res_fn, fitter.result)
+        print(f"Saved optimization results to {res_fn}!", flush=True)
+
+    if save_map:
+        fn_prob += ".fits"
+        hp.write_map(fn_prob, map_prob, overwrite=overwrite)
+        print(f"Saved map to {fn_prob}!", flush=True)
 
     end = time.time()
     print(f"Time: {end-start:.2f} s ({(end-start)/60.:.2f} min)", flush=True)
@@ -200,7 +241,7 @@ def construct_X(NPIX, map_names, maps_forsel):
 
 class Fitter():
 
-    def __init__(self, X_train, y_train, y_err_train, x_scale_name=None, y_scale_name=None):
+    def __init__(self, X_train, y_train, y_err_train, x_scale_name=None, y_scale_name=None, mean_model=None):
         assert X_train.shape[0]==y_train.shape[0]==y_err_train.shape[0], "check input array sizes!"
         self.X_train = X_train
         self.y_train = y_train
@@ -218,6 +259,8 @@ class Fitter():
         self.callback_count = 0 # number of times callback has been called (measures iteration count)
         self.inputs = [] # input of all calls
         self.lnlikes = [] # result of all calls
+
+        self.mean_model = mean_model
 
     def scale_y_err(self, y_err):
         if self.y_scale_name=='log':
@@ -265,7 +308,7 @@ class FitterGP(Fitter):
         kernel_p0 = np.exp(np.full(n_params, 0.1))
         kernel = george.kernels.ExpSquaredKernel(kernel_p0, ndim=ndim)
         mean_p0 = [2., 0., 0., 0.] # monopole + 3 dipole amplitudes
-        self.gp = george.GP(kernel, mean=DipoleModel(*mean_p0), fit_mean=True)
+        self.gp = george.GP(kernel, mean=self.mean_model(*mean_p0), fit_mean=True)
         print('p init:', self.gp.get_parameter_vector())
         # pre-compute the covariance matrix and factorize it for a set of times and uncertainties
         self.gp.compute(self.X_train_scaled, self.y_err_train_scaled)
@@ -313,10 +356,15 @@ class FitterGP(Fitter):
         # if first callback, print labels
         if not self.callback_count:
             s0 = f"niter\t"
-            colnames = ['monopole', 'dipole_x', 'dipole_y', 'dipole_z',
-                            'kparam-1', 'kparam-2', 'kparam-3', 'kparam-4', 'lnlike', 'ncalls', 'time']
-            for colname in colnames:
-                s0 += f"{colname:8s}\t"
+            dipole_names = ['monopole', 'dipole_x', 'dipole_y', 'dipole_z']
+            colnames = ['lnlike', 'ncalls', 'time']
+            for name in dipole_names:
+                s0 += f"{name:8s}\t"
+            for k in range(self.X_train.shape[1]):
+                label = f"kparam-{k}"
+                s0 += f"{label:8s}\t"
+            for name in colnames:
+                s0 += f"{name:8s}\t"
             print(s0, flush=True)
         # print current values
         s1 = f"{self.callback_count}\t"
@@ -326,24 +374,6 @@ class FitterGP(Fitter):
         s1 += f"{self.lnlikes[i]:8.6f}\t" + f"{i:8d}\t" + datetime.now().strftime("%H:%M:%S")
         print(s1, flush=True)
         self.callback_count += 1
-
-
-class DipoleModel(Model):
-    parameter_names = ('monopole', 'dipole_x', 'dipole_y', 'dipole_z')
-    # figure out how to pass NSIDE!
-    NSIDE = 64
-    NPIX = hp.nside2npix(NSIDE)
-    thetas, phis = hp.pix2ang(NSIDE, ipix=np.arange(NPIX))
-    print("theta:", min(thetas), max(thetas), flush=True)
-    print("phi:", min(phis), max(phis), flush=True)
-    
-    def get_value(self, X):
-        idx = np.arange(X.shape[0])
-        return self.monopole + dipole(DipoleModel.thetas[idx], DipoleModel.phis[idx],
-                                      self.dipole_x, self.dipole_y, self.dipole_z)
-    
-    def set_vector(self, v):
-        self.monopole, self.dipole_x, self.dipole_y, self.dipole_z = v
 
 
 if __name__=='__main__':
