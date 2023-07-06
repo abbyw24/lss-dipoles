@@ -42,7 +42,7 @@ def main():
     shorten_arrays = False
     nshort = 100
     random_pix = False
-    phi_slice = True
+    phi_slice = False
     minphi = 0
     maxphi = np.pi/4
     save_map = True
@@ -62,7 +62,7 @@ def main():
         else:
             shorttag += f'_{nshort}pix'
     maptag = f'_{map_names[0]}only' if len(map_names)==1 else ''
-    fn_prob = os.path.join(maps_dir, f'/scratch/aew492/quasars/maps/selection_function_NSIDE{NSIDE}_G{G_max}_dipole{shorttag}{maptag}')
+    fn_prob = os.path.join(maps_dir, f'/scratch/aew492/quasars/maps/selection_function_NSIDE{NSIDE}_G{G_max}_monopole{shorttag}{maptag}') # !! monopole
     overwrite = True
 
     start = time.time()
@@ -135,23 +135,38 @@ def main():
         - This class will only operate if there's a global variable called NSIDE
         and a global variable called PIXEL_INDICES_TO_FIT.
         """
-        parameter_names = ('monopole', 'dipole_x', 'dipole_y', 'dipole_z')
+        parameter_names = ['monopole', 'dipole_x', 'dipole_y', 'dipole_z']
         thetas, phis = hp.pix2ang(NSIDE, ipix=PIXEL_INDICES_TO_FIT)
         
-        def get_value(self, X):
+        def get_value(self, X):                        
             return self.monopole + dipole(DipoleModel.thetas, DipoleModel.phis,
-                                        self.dipole_x, self.dipole_y, self.dipole_z)
+                                        self.dipole_x, self.dipole_y, self.dipole_z) # this value has shape (len(PIXEL_INDICES_TO_FIT),)
         
         def set_vector(self, v):
+            print("set vector:", self.monopole, v)
             self.monopole, self.dipole_x, self.dipole_y, self.dipole_z = v
+
+    """ TEMPORARY monopole-only function """
+    class MonopoleModel(Model):
+        """
+        BUGS:
+        - This class will only operate if there's a global variable called NSIDE.
+        """
+        parameter_names = ['monopole']
+        
+        def get_value(self, X):
+            return np.full(X.shape[0], self.monopole)
+        
+        def set_vector(self, v):
+            self.monopole = v[0]  # v is a list of length 1
 
     ## TRAIN FITTER
     print("Training fitter", flush=True)
     print("X_train:", X_train.shape, "y_train:", y_train.shape, flush=True)
     fitter = FitterGP(X_train, y_train, y_err_train, 
                       x_scale_name=x_scale_name, y_scale_name=y_scale_name,
-                      mean_model=DipoleModel)
-    fitter.train(maxiter=15)
+                      mean_model=MonopoleModel) # !! monopole right now, not dipole
+    fitter.train()  # with dipole: maxiter=15
     # predict: the expected QUaia data
     print("Predicting", flush=True)
     y_pred = fitter.predict(X_train)
@@ -307,7 +322,8 @@ class FitterGP(Fitter):
         print("n params:", n_params)
         kernel_p0 = np.exp(np.full(n_params, 0.1))
         kernel = george.kernels.ExpSquaredKernel(kernel_p0, ndim=ndim)
-        mean_p0 = [2., 0., 0., 0.] # monopole + 3 dipole amplitudes
+        # mean_p0 = [2., 0., 0., 0.] # monopole + 3 dipole amplitudes
+        mean_p0 = [2.]
         self.gp = george.GP(kernel, mean=self.mean_model(*mean_p0), fit_mean=True)
         print('p init:', self.gp.get_parameter_vector())
         # pre-compute the covariance matrix and factorize it for a set of times and uncertainties
@@ -356,7 +372,8 @@ class FitterGP(Fitter):
         # if first callback, print labels
         if not self.callback_count:
             s0 = f"niter\t"
-            dipole_names = ['monopole', 'dipole_x', 'dipole_y', 'dipole_z']
+            # dipole_names = ['monopole', 'dipole_x', 'dipole_y', 'dipole_z']
+            dipole_names = ['monopole']
             colnames = ['lnlike', 'ncalls', 'time']
             for name in dipole_names:
                 s0 += f"{name:8s}\t"
