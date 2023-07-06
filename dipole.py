@@ -6,13 +6,19 @@ import numpy as np
 import healpy as hp
 
 ## COORDINATE TRANSFORMATIONS ##
-def xyz_to_phitheta(xyz):
-    """Given (x,y,z), return (phi,theta) coordinates on the sphere, where phi=LON and theta=LAT."""
+def xyz_to_thetaphi(xyz):
+    """Given (x,y,z), return (theta,phi) coordinates on the sphere, where phi=LON and theta=LAT."""
     x, y, z = xyz
     r = np.linalg.norm(xyz)
-    phi = np.arctan2(y,x)
     theta = np.arccos(z/r)
-    return phi, theta
+    phi = np.arctan2(y,x)
+    return theta, phi
+
+def spherical_to_cartesian(r, theta, phi):
+    x = r * np.cos(phi) * np.sin(theta)
+    y = r * np.sin(phi) * np.sin(theta)
+    z = r * np.cos(theta)
+    return np.array([x, y, z])
 
 
 ## DIPOLE CONTRIBUTIONS ##
