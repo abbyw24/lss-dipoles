@@ -34,3 +34,13 @@ def plot_map(map, projection_type='mollweide', coord=['C'],
              graticule=True, graticule_labels=True, **kwargs):
     projview(map, projection_type=projection_type, coord=coord,
              graticule=graticule, graticule_labels=graticule_labels, **kwargs)
+
+def lstsq(Y, A, Cinv):
+    """
+    Return the least-squares solution to a linear matrix equation,
+    given data Y, design matrix A, and inverse covariance Cinv.
+    """
+    a = A.T @ Cinv @ A
+    b = A.T @ Cinv @ Y
+    res = np.linalg.lstsq(a, b, rcond=None)
+    return res[0]
