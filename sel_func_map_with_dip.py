@@ -40,7 +40,7 @@ def main():
     # shorten arrays: if phi_slice is True, nshort is not used, only bounds on phi;
     #   if random_pix and phi_slice are both False, we take the first nshort pixels in the healpy map (default RING)
     shorten_arrays = False
-    nshort = 100
+    nshort = 1000
     random_pix = False
     phi_slice = False
     minphi = 0
@@ -62,7 +62,7 @@ def main():
         else:
             shorttag += f'_{nshort}pix'
     maptag = f'_{map_names[0]}only' if len(map_names)==1 else ''
-    fn_prob = os.path.join(maps_dir, f'/scratch/aew492/quasars/maps/selection_function_NSIDE{NSIDE}_G{G_max}_monopole{shorttag}{maptag}') # !! monopole
+    fn_prob = os.path.join(maps_dir, f'/scratch/aew492/quasars/maps/selection_function_NSIDE{NSIDE}_G{G_max}_dipole_nomaps{shorttag}{maptag}') # !! monopole
     overwrite = True
 
     start = time.time()
@@ -84,7 +84,8 @@ def main():
     ## CONSTRUCT FULL ARRAYS
     print("Constructing X and y", flush=True)
     NPIX = hp.nside2npix(NSIDE)
-    X_train_full = construct_X(NPIX, map_names, maps_forsel)
+    # X_train_full = construct_X(NPIX, map_names, maps_forsel)
+    X_train_full = np.empty((NPIX,4))
     y_train_full = map_nqso_data
     y_train_full = y_train_full.astype(float)  # need this because will be inserting small vals where zero
     y_err_train_full = np.sqrt(y_train_full)  # assume poisson error
@@ -143,7 +144,6 @@ def main():
                                         self.dipole_x, self.dipole_y, self.dipole_z) # this value has shape (len(PIXEL_INDICES_TO_FIT),)
         
         def set_vector(self, v):
-            print("set vector:", self.monopole, v)
             self.monopole, self.dipole_x, self.dipole_y, self.dipole_z = v
 
     """ TEMPORARY monopole-only function """
@@ -165,8 +165,8 @@ def main():
     print("X_train:", X_train.shape, "y_train:", y_train.shape, flush=True)
     fitter = FitterGP(X_train, y_train, y_err_train, 
                       x_scale_name=x_scale_name, y_scale_name=y_scale_name,
-                      mean_model=MonopoleModel) # !! monopole right now, not dipole
-    fitter.train()  # with dipole: maxiter=15
+                      mean_model=DipoleModel) # !! remember to change mean_p0 AND match callback names to mean model
+    fitter.train(maxiter=30)  # with dipole: maxiter=15
     # predict: the expected QUaia data
     print("Predicting", flush=True)
     y_pred = fitter.predict(X_train)
@@ -200,7 +200,7 @@ def main():
 def map_expected_to_probability(map_expected, map_true, map_names, maps_forsel):
     # clean pixels = no significant contamination from any map
     idx_clean = np.full(len(map_expected), True)
-    # get the "clean" indices from each map
+    # get the clean indices from each map
     for map_name, map in zip(map_names, maps_forsel):
         if map_name=='dust':
             idx_map = map < 0.03
@@ -322,8 +322,8 @@ class FitterGP(Fitter):
         print("n params:", n_params)
         kernel_p0 = np.exp(np.full(n_params, 0.1))
         kernel = george.kernels.ExpSquaredKernel(kernel_p0, ndim=ndim)
-        # mean_p0 = [2., 0., 0., 0.] # monopole + 3 dipole amplitudes
-        mean_p0 = [2.]
+        mean_p0 = [2., 0., 0., 0.] # monopole + 3 dipole amplitudes
+        # mean_p0 = [2.]
         self.gp = george.GP(kernel, mean=self.mean_model(*mean_p0), fit_mean=True)
         print('p init:', self.gp.get_parameter_vector())
         # pre-compute the covariance matrix and factorize it for a set of times and uncertainties
@@ -372,14 +372,14 @@ class FitterGP(Fitter):
         # if first callback, print labels
         if not self.callback_count:
             s0 = f"niter\t"
-            # dipole_names = ['monopole', 'dipole_x', 'dipole_y', 'dipole_z']
-            dipole_names = ['monopole']
-            colnames = ['lnlike', 'ncalls', 'time']
+            dipole_names = ['monopole', 'dipole_x', 'dipole_y', 'dipole_z']
+            # dipole_names = ['monopole']
             for name in dipole_names:
                 s0 += f"{name:8s}\t"
             for k in range(self.X_train.shape[1]):
                 label = f"kparam-{k}"
                 s0 += f"{label:8s}\t"
+            colnames = ['lnlike', 'ncalls', 'time']
             for name in colnames:
                 s0 += f"{name:8s}\t"
             print(s0, flush=True)

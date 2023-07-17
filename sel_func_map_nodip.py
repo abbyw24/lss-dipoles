@@ -257,7 +257,7 @@ class FitterGP(Fitter):
         print("n params:", n_params)
         kernel_p0 = np.exp(np.full(n_params, 0.1))
         kernel = george.kernels.ExpSquaredKernel(kernel_p0, ndim=ndim)
-        self.gp = george.GP(kernel, fit_mean=True)
+        self.gp = george.GP(kernel, mean=np.mean(self.y_train_scaled), fit_mean=True)
         print('p init:', self.gp.get_parameter_vector())
         # pre-compute the covariance matrix and factorize it for a set of times and uncertainties
         self.gp.compute(self.X_train_scaled, self.y_err_train_scaled)
@@ -305,9 +305,12 @@ class FitterGP(Fitter):
         # if first callback, print labels
         if not self.callback_count:
             s0 = f"niter\t"
-            colnames = ['kparam-1', 'kparam-2', 'kparam-3', 'kparam-4', 'lnlike', 'ncalls', 'time']
-            for colname in colnames:
-                s0 += f"{colname:8s}\t"
+            for k in range(self.X_train.shape[1]):
+                label = f"kparam-{k}"
+                s0 += f"{label:8s}\t"
+            colnames = ['lnlike', 'ncalls', 'time']
+            for name in colnames:
+                s0 += f"{name:8s}\t"
             print(s0, flush=True)
         # print current values
         s1 = f"{self.callback_count}\t"
