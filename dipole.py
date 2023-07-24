@@ -4,6 +4,8 @@ Get the expected number-count dipole in a healpy map.
 
 import numpy as np
 import healpy as hp
+import astropy.units as u
+from astropy.coordinates import SkyCoord
 
 ## COORDINATE TRANSFORMATIONS ##
 def xyz_to_thetaphi(xyz):
@@ -33,3 +35,18 @@ def dipole_map(amps, NSIDE=64):
     theta, phi = hp.pix2ang(NSIDE, ipix=np.arange(NPIX))  # get (theta,phi) coords of each pixel
     dip = dipole(theta, phi, *amps[1:])  # expected dipole: shape==(NPIX,)
     return amps[0] + dip
+
+def cmb_dipole(frame='icrs', amplitude=0.007):
+    """Return the orthogonal (x,y,z) CMB dipole components."""
+    cmb_dipdir = SkyCoord(264, 48, unit=u.deg, frame='galactic')
+    if frame=='icrs':
+        amps = np.array([0., *spherical_to_cartesian(r=amplitude,
+                                             theta=np.pi/2-cmb_dipdir.icrs.dec.rad,
+                                             phi=cmb_dipdir.icrs.ra.rad)])
+    elif frame=='galactic':
+        amps = np.array([0., *spherical_to_cartesian(r=amplitude,
+                                             theta=np.pi/2-cmb_dipdir.b.rad,
+                                             phi=cmb_dipdir.l.rad)])
+    else:
+        assert False, "unknown frame"
+    return amps
