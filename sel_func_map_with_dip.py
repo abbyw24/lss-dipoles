@@ -14,10 +14,11 @@ import sys
 
 from scipy.optimize import minimize
 import healpy as hp
+from astropy.coordinates import SkyCoord
 import george
 from george.modeling import Model
 
-from dipole import dipole
+from dipole import dipole, cmb_dipole
 
 sys.path.insert(0, '/home/aew492/gaia-quasars-lss/code')
 import utils
@@ -45,6 +46,7 @@ def main():
     phi_slice = False
     minphi = 0
     maxphi = np.pi/4
+    
     save_map = True
     save_res = True
 
@@ -62,7 +64,7 @@ def main():
         else:
             shorttag += f'_{nshort}pix'
     maptag = f'_{map_names[0]}only' if len(map_names)==1 else ''
-    fn_prob = os.path.join(maps_dir, f'/scratch/aew492/quasars/maps/selection_function_NSIDE{NSIDE}_G{G_max}_dipole_nomaps{shorttag}{maptag}') # !! monopole
+    fn_prob = os.path.join(maps_dir, f'/scratch/aew492/quasars/maps/selection_function_NSIDE{NSIDE}_G{G_max}_cmbdipoledir{shorttag}{maptag}') # !! monopole
     overwrite = True
 
     start = time.time()
@@ -84,8 +86,8 @@ def main():
     ## CONSTRUCT FULL ARRAYS
     print("Constructing X and y", flush=True)
     NPIX = hp.nside2npix(NSIDE)
-    # X_train_full = construct_X(NPIX, map_names, maps_forsel)
-    X_train_full = np.empty((NPIX,4))
+    X_train_full = construct_X(NPIX, map_names, maps_forsel)
+    # X_train_full = np.empty((NPIX,4))
     y_train_full = map_nqso_data
     y_train_full = y_train_full.astype(float)  # need this because will be inserting small vals where zero
     y_err_train_full = np.sqrt(y_train_full)  # assume poisson error
@@ -129,7 +131,9 @@ def main():
     print(np.min(y_train), flush=True)
     # assert np.min(y_train)==1.
 
-    # define mean function
+    """
+    MEAN FUNCTIONS
+    """
     class DipoleModel(Model):
         """
         BUGS:
@@ -145,8 +149,26 @@ def main():
         
         def set_vector(self, v):
             self.monopole, self.dipole_x, self.dipole_y, self.dipole_z = v
+    
+    class CMBDipole(Model):
+        """
+        Fits the dipole amplitude to the fixed CMB dipole direction.
 
-    """ TEMPORARY monopole-only function """
+        BUGS:
+        - This class will only operate if there's a global variable called NSIDE
+        and a global variable called PIXEL_INDICES_TO_FIT.
+        """
+        parameter_names = ['monopole', 'dipole_amp']
+        thetas, phis = hp.pix2ang(NSIDE, ipix=PIXEL_INDICES_TO_FIT)
+        amps = cmb_dipole(frame='icrs', amplitude=1.)
+        cmb_dipole_map = dipole(thetas, phis, *amps[1:])
+
+        def get_value(self, X):
+            return self.monopole + self.dipole_amp * CMBDipole.cmb_dipole_map
+        
+        def set_vector(self, v):
+            self.monopole, self.dipole_amp = v
+
     class MonopoleModel(Model):
         """
         BUGS:
@@ -165,7 +187,7 @@ def main():
     print("X_train:", X_train.shape, "y_train:", y_train.shape, flush=True)
     fitter = FitterGP(X_train, y_train, y_err_train, 
                       x_scale_name=x_scale_name, y_scale_name=y_scale_name,
-                      mean_model=DipoleModel) # !! remember to change mean_p0 AND match callback names to mean model
+                      mean_model=CMBDipole) # !! remember to change mean_p0 AND match callback names to mean model
     fitter.train(maxiter=30)  # with dipole: maxiter=15
     # predict: the expected QUaia data
     print("Predicting", flush=True)
@@ -323,7 +345,7 @@ class FitterGP(Fitter):
         kernel_p0 = np.exp(np.full(n_params, 0.1))
         kernel = george.kernels.ExpSquaredKernel(kernel_p0, ndim=ndim)
         mean_p0 = [2., 0., 0., 0.] # monopole + 3 dipole amplitudes
-        # mean_p0 = [2.]
+        mean_p0 = mean_p0[:len(self.mean_model.parameter_names)]  # for flexibility with which mean model we're using
         self.gp = george.GP(kernel, mean=self.mean_model(*mean_p0), fit_mean=True)
         print('p init:', self.gp.get_parameter_vector())
         # pre-compute the covariance matrix and factorize it for a set of times and uncertainties
@@ -372,9 +394,7 @@ class FitterGP(Fitter):
         # if first callback, print labels
         if not self.callback_count:
             s0 = f"niter\t"
-            dipole_names = ['monopole', 'dipole_x', 'dipole_y', 'dipole_z']
-            # dipole_names = ['monopole']
-            for name in dipole_names:
+            for name in self.mean_model.parameter_names:
                 s0 += f"{name:8s}\t"
             for k in range(self.X_train.shape[1]):
                 label = f"kparam-{k}"
