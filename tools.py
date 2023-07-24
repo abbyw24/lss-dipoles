@@ -39,8 +39,14 @@ def lstsq(Y, A, Cinv):
     """
     Return the least-squares solution to a linear matrix equation,
     given data Y, design matrix A, and inverse covariance Cinv.
+    BUG:
+    - This should catch warnings and errors in the `res` object.
     """
-    a = A.T @ Cinv @ A
-    b = A.T @ Cinv @ Y
+    if len(Cinv.shape)==1:
+        a = A.T @ (Cinv[:,None] * A)
+        b = A.T @ (Cinv * Y)
+    else:
+        a = A.T @ Cinv @ A
+        b = A.T @ Cinv @ Y
     res = np.linalg.lstsq(a, b, rcond=None)
-    return res[0]
+    return res[0], a
