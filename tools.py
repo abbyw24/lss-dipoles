@@ -4,6 +4,7 @@ Helper functions.
 
 import numpy as np
 from astropy.table import Table
+from astropy.coordinates import SkyCoord
 import os
 import healpy as hp
 from healpy.newvisufunc import projview
@@ -24,6 +25,15 @@ def load_catalog_as_map(filename, frame='icrs', NSIDE=64):
     hpmap = np.bincount(pix_idx, minlength=hp.nside2npix(NSIDE))
     return hpmap
 
+def get_galactic_mask(blim, NSIDE=64, frame='icrs'):
+    """Returns a HEALPix mask around the galactic plane given an absolute b (latitude) limit."""
+    NPIX = hp.nside2npix(NSIDE)
+    lon, lat = hp.pix2ang(NSIDE, ipix=np.arange(NPIX), lonlat=True)
+    coords = SkyCoord(lon, lat, frame=frame, unit='deg')
+    idx_to_cut = (np.abs(coords.galactic.b.deg) < blim)
+    galactic_mask = np.full(NPIX, True)
+    galactic_mask[idx_to_cut] = False
+    return galactic_mask
 
 def flatten_map(sf_map):
     newarr = np.array([row[0] for row in sf_map])
