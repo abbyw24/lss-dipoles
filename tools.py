@@ -3,14 +3,20 @@ Helper functions.
 """
 
 import numpy as np
+import astropy
 from astropy.table import Table
 from astropy.coordinates import SkyCoord
 import os
 import healpy as hp
 from healpy.newvisufunc import projview
 
-def load_catalog_as_map(filename, frame='icrs', NSIDE=64):
-    tab = Table.read(filename, format='fits')
+def load_catalog_as_map(catalog, frame='icrs', NSIDE=64):
+    if type(catalog)==str:
+        tab = Table.read(catalog, format='fits')
+    elif type(catalog)==astropy.table.table.Table:
+        tab = catalog
+    else:
+        assert TypeError, "invalid input catalog type (filename or astropy table)"
     if frame=='galactic':
         try:
             lon, lat = tab['l'], tab['b']
