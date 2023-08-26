@@ -10,7 +10,7 @@ import os
 import healpy as hp
 from healpy.newvisufunc import projview
 
-def load_catalog_as_map(catalog, frame='icrs', NSIDE=64):
+def load_catalog_as_map(catalog, frame='icrs', NSIDE=64, dtype=float):
     if type(catalog)==str:
         tab = Table.read(catalog, format='fits')
     elif type(catalog)==astropy.table.table.Table:
@@ -29,7 +29,7 @@ def load_catalog_as_map(catalog, frame='icrs', NSIDE=64):
     # format into healpy map
     pix_idx = hp.ang2pix(NSIDE, lon, lat, lonlat=True)
     hpmap = np.bincount(pix_idx, minlength=hp.nside2npix(NSIDE))
-    return hpmap
+    return hpmap.astype(dtype)
 
 def get_galactic_mask(blim, NSIDE=64, frame='icrs'):
     """Returns a HEALPix mask around the galactic plane given an absolute b (latitude) limit."""
@@ -50,6 +50,13 @@ def plot_map(map, projection_type='mollweide', coord=['C'],
              graticule=True, graticule_labels=True, **kwargs):
     projview(map, projection_type=projection_type, coord=coord,
              graticule=graticule, graticule_labels=graticule_labels, **kwargs)
+
+
+def mollview(map, coord=['C'], graticule=True, graticule_labels=True, title=None, **kwargs):
+    hp.mollview(map, coord=coord, title=title, **kwargs)
+    if graticule:
+        hp.graticule(coord=coord)
+
 
 def lstsq(Y, A, Cinv):
     """
