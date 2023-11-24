@@ -133,7 +133,7 @@ def getDipoleVectors_healpy(densitymap, mask=[None], galcut=0, verbose=False) :
 	return dipole_norm,d
 
 
-def cmb_dipole(frame='icrs', amplitude=0.007):
+def cmb_dipole(frame='icrs', amplitude=0.007, return_amps=False):
     """
     Return the orthogonal (x,y,z) CMB dipole components.
     """
@@ -148,7 +148,10 @@ def cmb_dipole(frame='icrs', amplitude=0.007):
                                              phi=cmb_dipdir.l.rad)])
     else:
         assert False, "unknown frame"
-    return amps
+    if return_amps is True:
+        return amps
+    else:
+        return get_dipole(amps, frame=frame)
 
 def get_dipole(amps, frame='icrs', verbose=False):
     """
