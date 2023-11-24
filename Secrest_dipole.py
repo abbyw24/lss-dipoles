@@ -13,6 +13,7 @@ from astropy.io import fits
 from astropy.coordinates import SkyCoord
 import astropy.units as u
 import healpy as hp
+from healpy.visufunc import projplot
 from scipy.stats import sem
 from datetime import datetime
 import os
@@ -54,21 +55,43 @@ STEP 6. Get spectral indices with `lookup_alpha_catwise.py`.
 
 def main():
 
-    """ CatWISE2020 """
-    # dipoleset = SecrestDipole(initial_catfn='catwise_agns_master.fits',
-    #                             catname='catwise_agns',
-    #                             mag='w1',
-    #                             maglim=16.4,
-    #                             blim=50,
-    #                             mask_fn = '/scratch/aew492/quasars/catalogs/MASKS_exclude_master_final.fits')
-    """ Quaia """
-    dipoleset = SecrestDipole(initial_catfn='quaia_G20.0_master.fits',
-                                catname='quaia',
-                                mag='G',
-                                maglim=20.0,
-                                blim=30,
-                                compcorrect=True,
-                                mask_fn='/scratch/aew492/quasars/catalogs/MASKS_exclude_master_final.fits')
+    Rv = 3.1
+    delRW = 0.
+    Rv_tag = f'_Rv{Rv:.1f}' if Rv != 3.1 else ''
+    delRW_tag = f'_RW{delRW:.3f}' if delRW != 0. else ''
+    initial_catfn = f'catwise_agns_master{Rv_tag}{delRW_tag}.fits'
+
+    mask_factor = 1.
+    mask_fn = f'/scratch/aew492/quasars/catalogs/masks/mask_master_hpx_r{mask_factor:.1f}.fits'
+    save_tag = '' # f'_r{mask_factor:.1f}'
+
+    catname = 'quaia'
+
+    # blims = np.arange(30, 61, 10)
+    # maglims = np.arange(15.8, 16.81, 0.2)
+
+
+    if catname == 'catwise_agns':
+        dipoleset = SecrestDipole(initial_catfn=initial_catfn,
+                                    catname='catwise_agns',
+                                    mask_fn=mask_fn,
+                                    mag='w1',
+                                    maglim=16.8,
+                                    blim=20,
+                                    Rv=Rv,
+                                    delRW=delRW,
+                                    save_tag=save_tag)
+    elif catname == 'quaia':
+        dipoleset = SecrestDipole(initial_catfn='quaia_G20.5.fits',
+                                    catname='quaia',
+                                    mask_fn=mask_fn,
+                                    mag='G',
+                                    maglim=20.1,
+                                    blim=30,
+                                    compcorrect=True,
+                                    save_tag=save_tag)
+    else:
+        assert False, "unknown catname"
 
     # Steps 1-3a already done; start with `initial_catfn`.
 
@@ -83,15 +106,18 @@ def main():
     # 4a. Make HEALPix map.
     dipoleset.make_healpix_map(save=True, overwrite=True)
 
+    dipoleset.mask_initial_healpix_map()
+
     # 4b. Prepare additional masking catalog.
     # -> already done; we can use the same modified masking file for all catalogs
     # dipoleset.prepare_additional_masking_catalog(save=True, overwrite=True)
 
-    # 4c. (in TOPCAT) Perform exclusionary sky ellipses match.
-    dipoleset.log("(TOPCAT: performed exclusionary sky ellipses match)")
+    # # 4c. (in TOPCAT) Perform exclusionary sky ellipses match.
+    # dipoleset.log("(TOPCAT: performed exclusionary sky ellipses match)")
 
-    # 4d. Load in masked HEALPix map and make an extra galactic plane cut.
-    dipoleset.load_masked_healpix_map()
+    # # 4d. Load in masked HEALPix map and make an extra galactic plane cut.
+    # dipoleset.load_masked_healpix_map()
+
     dipoleset.make_extra_galactic_plane_cut(save=True, overwrite=True)
 
     # Step 5. Determine the bias correction for ecliptic latitude and make corrected density.
@@ -100,6 +126,8 @@ def main():
     # compute dipole?
     dipole_amp, dipole_dir = dipoleset.compute_dipole(dipoleset.hpxelatcorr,
                                                         Cinv=None, out_frame='galactic', logoutput=True)
+    
+    del dipoleset
 
     # Step 6. Get spectral indices from the alpha lookup table.
     # dipoleset.get_alphas(tab_fn=None, save=True, overwrite=True)
@@ -113,19 +141,21 @@ class SecrestDipole():
     """
 
     def __init__(self,
-                    catname='catwise_agns',
-                    initial_catfn='catwise_agns_master.fits',
-                    mag='w1',
-                    maglim=16.4,
+                    catname,
+                    initial_catfn,
+                    mag, maglim,
+                    mask_fn='/scratch/aew492/quasars/catalogs/masks/mask_master_hpx_r1.0.fits',
                     blim=30,
+                    Rv=3.1,
+                    delRW=0,
                     badd=1,
-                    r1=1,
                     compcorrect=False,
                     NSIDE=64,
                     load_init=True,
                     log=True,
                     newlog=True,
-                    mask_fn = '/scratch/aew492/quasars/catalogs/MASKS_exclude_master_final.fits'):
+                    basedir='/scratch/aew492/quasars/catalogs',
+                    save_tag=''):
 
         # asserts
         assert initial_catfn.endswith('.fits'), "initial catalog must be a fits file"
@@ -133,22 +163,30 @@ class SecrestDipole():
         # input parameters
         self.catname = catname
         self.initial_catfn = initial_catfn
-        self.catdir = os.path.join('/scratch/aew492/quasars/catalogs', self.catname)
-        if not os.path.exists(self.catdir):
-            os.makedirs(self.catdir)
         self.mag = mag
         self.maglim = maglim
+        self.mask_fn = mask_fn
+        self.basedir = basedir
+        self.catdir = os.path.join(self.basedir, self.catname)
+        if not os.path.exists(self.catdir):
+            os.makedirs(self.catdir)
         self.blim = blim
+        self.Rv = Rv
+        self.delRW = delRW
         self.badd = badd
-        self.r1 = r1.to(u.deg) if isinstance(r1, u.Quantity) else r1 * u.deg
+        # self.r1 = r1.to(u.deg) if isinstance(r1, u.Quantity) else r1 * u.deg
         self.compcorrect = compcorrect if catname == 'quaia' else False
-        self.comptag = '_compcorr' if self.compcorrect else ''
         self.NSIDE = NSIDE
         self.NPIX = hp.nside2npix(NSIDE)
-        self.mask_fn = mask_fn
+
+        # tags
+        self.Rv_tag = f'_Rv{Rv:.1f}' if Rv != 3.1 else ''
+        self.delRW_tag = f'_RW{delRW:.3f}' if delRW != 0. else ''
+        self.comp_tag = '_compcorr' if self.compcorrect else ''
 
         # save directory
-        self.savedir = os.path.join(self.catdir, f'{catname}_{mag}{maglim:.1f}_blim{blim:.0f}')
+        self.savedir = os.path.join(self.catdir,
+                        f'choices/{catname}{self.Rv_tag}{self.delRW_tag}_{mag}{maglim:.1f}_blim{blim:.0f}{save_tag}')
         if not os.path.exists(self.savedir):
             os.makedirs(self.savedir)
         if self.compcorrect:
@@ -165,6 +203,7 @@ class SecrestDipole():
         # load initial catalog as an astropy table
         if load_init:
             self.load_initial_cattab()
+
 
     def make_new_log(self):
         with open(self.log_fn, 'w') as f:
@@ -189,8 +228,8 @@ class SecrestDipole():
         self.log(f"{len(self.initial_cattab)} sources in initial catalog.")
     
 
-    def _update_working(self, cattab):
-        self.cattab = cattab
+    def _update_working(self, table):
+        self.table = table
     
 
     def _step_handler(self, func, save=False, save_fn=None, overwrite=True, **kwargs):
@@ -227,13 +266,13 @@ class SecrestDipole():
             key = 'phot_g_mean_mag'
         else:
             key = self.mag
-        self._update_working(self.cattab[self.cattab[key] <= self.maglim])
-        self.log(f"cut {self.mag} > {self.maglim} -> {len(self.cattab)} sources left.")
+        self._update_working(self.table[self.table[key] <= self.maglim])
+        self.log(f"cut {self.mag} > {self.maglim} -> {len(self.table)} sources left.")
     
 
     def cut_galactic_plane(self):
-        self._update_working(self.cattab[np.abs(self.cattab['b']) > self.blim])
-        self.log(f"cut |b| <= {self.blim} -> {len(self.cattab)} sources left.")
+        self._update_working(self.table[np.abs(self.table['b']) > self.blim])
+        self.log(f"cut |b| <= {self.blim} -> {len(self.table)} sources left.")
     
 
     """
@@ -298,35 +337,60 @@ class SecrestDipole():
 
     def make_healpix_map(self, save=True, overwrite=True):
         save_fn = os.path.join(self.savedir, 'first_hpx_map.fits')
-        self.first_hpx_map, did_step, saved = self._step_handler(self._make_healpix_map, t=self.cattab,
+        self.first_hpx_map, did_step, saved = self._step_handler(self._make_healpix_map, t=self.table,
                                                     save=save, save_fn=save_fn, overwrite=overwrite)
         if saved:
             self.log(f"saved HEALPix map to {save_fn}")
+        self._update_working(self.first_hpx_map)
     
 
-    # ! no longer needed, since we can use the same modified mask file for all catalogs
-    def _prepare_additional_masking_catalog(self):
+    # # ! no longer needed, since we can use the same modified mask file for all catalogs
+    # def _prepare_additional_masking_catalog(self):
 
-        # load initial masks file
-        masktab = Table.read(self.mask_fn)
-        print(f"loaded {len(masktab)} masks from {self.mask_fn}.", flush=True)
+    #     # load initial masks file
+    #     masktab = Table.read(self.mask_fn)
+    #     print(f"loaded {len(masktab)} masks from {self.mask_fn}.", flush=True)
 
-        # increase radii "to avoid edge effects when excluding HEALPix pixels near the edge of masks":
-        # add r1 to the primary radius (degrees)
-        masktab['radius'] += self.r1.value
-        print(f"added {self.r1.value} degrees to the primary radius", flush=True)
-        # make a secondary radius as (radius + 1) * ba
-        masktab['radius2'] = (masktab['radius'] + 1) * masktab['ba']
-        print(f"made secondary radius as (radius + 1) * ba", flush=True)
+    #     # increase radii "to avoid edge effects when excluding HEALPix pixels near the edge of masks":
+    #     # add r1 to the primary radius (degrees)
+    #     masktab['radius'] += self.r1.value
+    #     print(f"added {self.r1.value} degrees to the primary radius", flush=True)
+    #     # make a secondary radius as (radius + 1) * ba
+    #     masktab['radius2'] = (masktab['radius'] + 1) * masktab['ba']
+    #     print(f"made secondary radius as (radius + 1) * ba", flush=True)
 
-        return masktab
+    #     return masktab
     
-    def prepare_additional_masking_catalog(self, save=True, overwrite=True):
-        save_fn = os.path.join(self.savedir, self.mask_fn.replace('.fits', '_mod.fits'))
-        masktab, did_step, saved = self._step_handler(self._prepare_additional_masking_catalog,
-                                                    save=save, save_fn=save_fn, overwrite=overwrite)
+    # def prepare_additional_masking_catalog(self, save=True, overwrite=True):
+    #     save_fn = os.path.join(self.savedir, self.mask_fn.replace('.fits', '_mod.fits'))
+    #     masktab, did_step, saved = self._step_handler(self._prepare_additional_masking_catalog,
+    #                                                 save=save, save_fn=save_fn, overwrite=overwrite)
+    #     if saved:
+    #         print(f"saved modified mask file to {save_fn}", flush=True)
+    
+
+    def _mask_initial_healpix_map(self, map_=None):
+        # initial healpix map
+        if map_ is None:
+            try:
+                map_ = self.first_hpx_map
+            except AttributeError:
+                map_ = Table.read(os.path.join(self.savedir, 'first_hpx_map.fits'))
+        if self.mask_fn is not None:
+            with fits.open(self.mask_fn) as hdu:
+                mask = hdu[0].data
+            assert map_['density'].shape == mask.shape
+            map_['density'][mask==0.] = hp.UNSEEN
+        return map_
+    
+    def mask_initial_healpix_map(self, save=True, overwrite=True):
+        save_fn = os.path.join(self.savedir, 'hpx_masked.fits')
+        self.hpxmasked, did_step, saved = self._step_handler(self._mask_initial_healpix_map,
+                                                        save=save, save_fn=save_fn, overwrite=overwrite)
         if saved:
-            print(f"saved modified mask file to {save_fn}", flush=True)
+            self.log(f"saved masked healpix map to {save_fn}: \
+                        {sum(self.hpxmasked['density']!=hp.UNSEEN)} unmasked healpixels")
+        self._update_working(self.hpxmasked)
     
 
     def load_masked_healpix_map(self):
@@ -336,12 +400,12 @@ class SecrestDipole():
         except FileNotFoundError:
             raise FileNotFoundError("map not found; perform additional masking in TOPCAT")
         self.log(f"successfully loaded masked healpix map, {map_fn}: {len(self.hpxmasked)} healpixels")
+        self._update_working(self.hpxmasked)
     
 
     def _make_extra_galactic_plane_cut(self):
-        assert hasattr(self, 'hpxmasked'), "must have loaded the masked HEALPix map"
         blim = self.blim + self.badd
-        return self.hpxmasked[np.abs(self.hpxmasked['b']) > blim]
+        return self.table[np.abs(self.table['b']) > blim]
 
     def make_extra_galactic_plane_cut(self, save=True, overwrite=True):
         save_fn = os.path.join(self.savedir, 'hpx_masked_final.fits')
@@ -354,29 +418,36 @@ class SecrestDipole():
         
         if self.compcorrect:
             self.completeness_correct()
+        self._update_working(self.hpxmaskedbcut)
     
 
-    def _completeness_correct(self, tab_fn, key):
+    def _completeness_correct(self, tab, key, selfunc_fn=None):
         """ Correct the density in each healpixel by the completeness in that pixel. """
         assert self.catname == 'quaia', "catalog must be Quaia for completeness correction"
         # if a table is provided, use that; otherwise try to use the class attribute
-        if tab_fn is None:
+        if tab is None:
             try:
                 t = self.hpxmaskedbcut
             except AttributeError:
                 t = Table.read(os.path.join(self.savedir, 'hpx_masked_final.fits'))
                 print("loaded hpx_masked_final")
         else:
-            t = Table.read(tab_fn)
+            if type(tab)==str:
+                t = Table.read(tab)
+            else:
+                t = tab
         hpmap = t[key]
-        selfunc = self.load_selfunc()
-        hpmap_corr = np.divide(hpmap, selfunc[t['hpidx']])
+        # which selection function to use
+        maglim = 20.0 if self.maglim <= 20.25 else 20.5
+        selfunc = self.load_selfunc(maglim=maglim, selfunc_fn=selfunc_fn)
+        hpmap_corr = np.full(len(hpmap), hp.UNSEEN)
+        hpmap_corr = np.divide(hpmap, selfunc[t['hpidx']], out=hpmap_corr, where=((hpmap!=hp.UNSEEN) & (selfunc[t['hpidx']]!=0.)))
         t[key] = hpmap_corr
         return t
     
-    def completeness_correct(self, tab_fn=None, key='density', save=True, overwrite=True):
+    def completeness_correct(self, tab=None, key='density', save=True, overwrite=True):
         save_fn = os.path.join(self.savedir_, 'hpx_masked_final.fits')
-        self.hpxmaskedbcut, did_step, saved = self._step_handler(self._completeness_correct, tab_fn=tab_fn, key=key,
+        self.hpxmaskedbcut, did_step, saved = self._step_handler(self._completeness_correct, tab=tab, key=key,
                                                         save=save, save_fn=save_fn, overwrite=overwrite)
         if saved:
             self.log(f"saved completeness-corrected HEALPix map to {save_fn}")
@@ -385,14 +456,21 @@ class SecrestDipole():
     """
     STEP 5. Correct for trend with absolute ecliptic latitude.
     """
-    def _hpx_vs_direction(self, key='density', tab_fn=None, sebsvals=False):
+    def _hpx_vs_direction(self, key='density', tab=None, sebsvals=False):
         # if a table is provided, use that; otherwise try to use the class attribute
-        if tab_fn is None:
+        if tab is None:
             try:
                 t = self.hpxmaskedbcut
             except AttributeError:
                 t = Table.read(os.path.join(self.savedir_, 'hpx_masked_final.fits'))
-                print(f"loaded {self.comptag} hpx_masked_final")
+                print(f"loaded {self.comp_tag} hpx_masked_final")
+        else:
+            if type(tab)==str:
+                t = Table.read(tab)
+            else:
+                assert isinstance(tab, Table)
+                t = tab
+
 
         # Split t on masked and unmasked
         msk = t[key] < 0
@@ -443,12 +521,13 @@ class SecrestDipole():
     def make_elat_correction(self, tab_fn=None, sebsvals=False, save=True, overwrite=True):
         save_fn = os.path.join(self.savedir_, 'hpx_masked_final_elatdenscorr.fits')
         self.log("making elat density correction...")
-        self.hpxelatcorr, did_step, saved = self._step_handler(self._hpx_vs_direction, tab_fn=tab_fn, sebsvals=sebsvals,
+        self.hpxelatcorr, did_step, saved = self._step_handler(self._hpx_vs_direction, tab=tab_fn, sebsvals=sebsvals,
                                                                 save=save, save_fn=save_fn, overwrite=overwrite)
         if did_step:
             self.log(f"corrected for ecliptic latitude trend")
         if saved:
             self.log(f"saved HEALPix map with elat correction to {save_fn}")
+        self._update_working(self.hpxelatcorr)
          
 
     """
@@ -459,7 +538,7 @@ class SecrestDipole():
         assert self.mag.upper() == 'W1', "W1 magnitudes not found"
         # if a table is provided, use that; otherwise try to use the class attribute
         if tab_fn is None:
-            t = self.cattab
+            t = self.table
         else:
             t = Table.read(tab_fn)
 
@@ -522,7 +601,7 @@ class SecrestDipole():
     def get_alphas(self, tab_fn=None, save=True, overwrite=True):
         self.log("getting spectral indices (alphas)...")
         save_fn = os.path.join(self.savedir, f'{self.catname}_final_alphas.fits')
-        self.cattab_with_alphas, did_step, saved = self._step_handler(self._get_alphas, tab_fn=tab_fn,
+        self.table_with_alphas, did_step, saved = self._step_handler(self._get_alphas, tab_fn=tab_fn,
                                                                 save=save, save_fn=save_fn, overwrite=overwrite)
         if saved:
             self.log(f"saved final catalog with alphas to {save_fn}")
@@ -530,19 +609,23 @@ class SecrestDipole():
     """
     SMOOTHED MAP
     """
-    def _smooth_map(self, tab_fn=None):
+    def _smooth_map(self, tab=None):
         """
         Modified from Secrest's `hpx_vs_direction.py`.
         """
         # if a table is provided, use that; otherwise try to use the class attribute
-        if tab_fn is None:
+        if tab is None:
             try:
                 t = self.hpxelatcorr
             except AttributeError:
                 t = self.load_hpxelatcorr()
                 print("loaded hpxelatcorr")
         else:
-            t = Table.read(tab_fn)
+            if type(tab)==str:
+                t = Table.read(tab)
+            else:
+                assert isinstance(tab, Table)
+                t = tab
 
         theta = omega_to_theta(1)
         lent = len(t)
@@ -570,14 +653,14 @@ class SecrestDipole():
             print("\t%.1f%%" % ((i + 1) / lent * 100), end='\r')
         return t 
     
-    def smooth_map(self, tab_fn=None, save=True, overwrite=True):
+    def smooth_map(self, tab=None, save=True, overwrite=True):
         self.log("smoothing density-corrected map...")
         save_fn = os.path.join(self.savedir_, f'{self.catname}_hpx_smoothed.fits')
         if os.path.exists(save_fn):
             self.hpx_smoothed = Table.read(save_fn, format='fits')
             self.log(f"loaded smoothed map from {save_fn}")
         else:
-            self.hpx_smoothed, did_step, saved = self._step_handler(self._smooth_map, tab_fn=tab_fn,
+            self.hpx_smoothed, did_step, saved = self._step_handler(self._smooth_map, tab=tab,
                                                                     save=save, save_fn=save_fn, overwrite=overwrite)
             if saved:
                 self.log(f"saved smoothed map to {save_fn}")
@@ -614,14 +697,19 @@ class SecrestDipole():
         except FileNotFoundError:
             return Table.read(os.path.join(self.savedir_, 'hpx_masked_final_denscorr.fits'))
     
-    def load_selfunc(self):
+    def load_smoothed_map(self):
+        return Table.read(os.path.join(self.savedir_, f'{self.catname}_hpx_smoothed.fits'))
+    
+    def load_selfunc(self, maglim=20., selfunc_fn=None):
         assert self.catname == 'quaia', "catalog must be Quaia"
-        return tools.flatten_map(Table.read(os.path.join(self.catdir,
-                                f'selection_function_NSIDE{self.NSIDE}_{self.mag}{self.maglim:.1f}.fits')))
+        selfunc_fn = os.path.join(self.catdir,
+                                f'selection_function_NSIDE{self.NSIDE}_{self.mag}{maglim:.1f}.fits') \
+                    if selfunc_fn is None else selfunc_fn
+        return tools.flatten_map(Table.read(selfunc_fn))
     
     def plot_map(self, maptab, key='elatdenscorr', coord=['C','G'], badcolor='white', **kwargs):
         """
-        Wrapper for tools.mollview()
+        Wrapper for `tools.mollview()`
         """
         map_to_plot = np.zeros(self.NPIX)
         try:
@@ -631,6 +719,16 @@ class SecrestDipole():
         map_to_plot[map_to_plot==0.] = np.nan
 
         tools.mollview(map_to_plot, coord=coord, badcolor=badcolor, **kwargs)
+    
+    def plot_dipole(self, dipdir, **kwargs):
+        """
+        Wrapper for `hp.newvisufunc.projplot()`
+        """
+        try:
+            projplot(np.pi/2 * u.rad - dipdir.galactic.b.to(u.rad).wrap_at(np.pi * u.rad),
+                        dipdir.galactic.l.to(u.rad).wrap_at(np.pi * u.rad), **kwargs)
+        except AttributeError:
+            projplot(np.pi/2 - dipdir[1], dipdir[0], **kwargs)
 
 
 if __name__=='__main__':
