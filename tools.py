@@ -6,7 +6,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import astropy
 from astropy.table import Table
-from astropy.coordinates import SkyCoord
+from astropy.coordinates import SkyCoord, Angle
+import astropy.units as u
 import os
 import healpy as hp
 from healpy.newvisufunc import projview
@@ -79,3 +80,11 @@ def lstsq(Y, A, Cinv):
         b = A.T @ Cinv @ Y
     res = np.linalg.lstsq(a, b, rcond=None)
     return res[0], a
+
+
+def plot_marker(lon, lat, **kwargs):
+    lon = lon.to(u.rad) if isinstance(lon, u.Quantity) else (lon * u.deg).to(u.rad)
+    lat = lat.to(u.rad) if isinstance(lat, u.Quantity) else (lat * u.deg).to(u.rad)
+    theta = Angle((np.pi/2 * u.rad) - lat)
+    phi = Angle(lon)
+    hp.newprojplot(theta, phi.wrap_at(np.pi * u.rad), **kwargs)
