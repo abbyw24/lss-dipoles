@@ -55,15 +55,15 @@ STEP 6. Get spectral indices with `lookup_alpha_catwise.py`.
 
 def main():
 
-    Rv = 3.1
-    delRW = 0.
-    Rv_tag = f'_Rv{Rv:.1f}' if Rv != 3.1 else ''
-    delRW_tag = f'_RW{delRW:.3f}' if delRW != 0. else ''
-    initial_catfn = f'catwise_agns_master{Rv_tag}{delRW_tag}.fits'
+    # Rv = 3.1
+    # delRW = 0.
+    # Rv_tag = f'_Rv{Rv:.1f}' if Rv != 3.1 else ''
+    # delRW_tag = f'_RW{delRW:.3f}' if delRW != 0. else ''
+    # initial_catfn = f'catwise_agns_master{Rv_tag}{delRW_tag}.fits'
 
-    mask_factor = 1.
-    mask_fn = f'/scratch/aew492/quasars/catalogs/masks/mask_master_hpx_r{mask_factor:.1f}.fits'
-    save_tag = '' # f'_r{mask_factor:.1f}'
+    mask_factor = 2.5
+    mask_fn = f'/scratch/aew492/quasars/catalogs/masks/mask_master_hpx_r{mask_factor:.1f}.fits' if mask_factor>0. else None
+    save_tag = f'_r{mask_factor:.1f}'
 
     catname = 'quaia'
 
@@ -86,7 +86,7 @@ def main():
                                     catname='quaia',
                                     mask_fn=mask_fn,
                                     mag='G',
-                                    maglim=20.1,
+                                    maglim=20.,
                                     blim=30,
                                     compcorrect=True,
                                     save_tag=save_tag)
@@ -125,7 +125,7 @@ def main():
 
     # compute dipole?
     dipole_amp, dipole_dir = dipoleset.compute_dipole(dipoleset.hpxelatcorr,
-                                                        Cinv=None, out_frame='galactic', logoutput=True)
+                                                        Cinv=None, logoutput=True)
     
     del dipoleset
 
@@ -183,6 +183,7 @@ class SecrestDipole():
         self.Rv_tag = f'_Rv{Rv:.1f}' if Rv != 3.1 else ''
         self.delRW_tag = f'_RW{delRW:.3f}' if delRW != 0. else ''
         self.comp_tag = '_compcorr' if self.compcorrect else ''
+        self.save_tag = save_tag
 
         # save directory
         self.savedir = os.path.join(self.catdir,
@@ -439,7 +440,7 @@ class SecrestDipole():
         hpmap = t[key]
         # which selection function to use
         maglim = 20.0 if self.maglim <= 20.25 else 20.5
-        selfunc = self.load_selfunc(maglim=maglim, selfunc_fn=selfunc_fn)
+        selfunc = self.load_selfunc(maglim=maglim) #, selfunc_fn=f'/scratch/aew492/quasars/catalogs/quaia/old_releases/selection_function_NSIDE{self.NSIDE}_G{self.maglim:.1f}.fits') # !!
         hpmap_corr = np.full(len(hpmap), hp.UNSEEN)
         hpmap_corr = np.divide(hpmap, selfunc[t['hpidx']], out=hpmap_corr, where=((hpmap!=hp.UNSEEN) & (selfunc[t['hpidx']]!=0.)))
         t[key] = hpmap_corr
@@ -669,7 +670,7 @@ class SecrestDipole():
     """
     COMPUTE DIPOLE
     """
-    def compute_dipole(self, hpxmap, key='elatdenscorr', Cinv=None, out_frame='galactic', logoutput=False, verbose=False):
+    def compute_dipole(self, hpxmap, key='elatdenscorr', Cinv=None, logoutput=False, verbose=False):
         """
         Wrapper for `dipole.fit_dipole()`.
         """
