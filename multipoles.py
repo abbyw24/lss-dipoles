@@ -38,6 +38,5 @@ def multipole_map(amps, NSIDE=64):
     hpmap = np.zeros(NPIX)
     for i, m in enumerate(ms):
         comp = real_sph_harm(m, ell, theta, phi)
-        comp /= np.max(comp)
         hpmap += amps[i] * comp
     return hpmap
