@@ -34,9 +34,39 @@ def var_jackknife(Y):
     return prefactor * np.sum(X, axis=0)
 
 
-def measure_dipole(d, t, loncut=None):
+def compute_jackknife_uncertainty(subsamples, func, **kwargs):
     """
-    Measure the dipole amplitudes from a source table and a `SecrestDipole` object.
+    Compute the uncertainty on a measurement using jackknife resampling.
+
+    Parameters
+    ----------
+    subsamples : A list of data subsamples to be used to estimate the uncertainty.
+
+    func : The function that returns the measurement for which to estimate the uncertainty.
+        Must take data (a subsample) followed by `kwargs` as inputs, and output an ndarray for
+        which to estimate the uncertainty.
+
+    kwargs : Keyword arguments to input to `func`.
+
+    Returns
+    -------
+    std : The jackknife uncertainty on the output of `func`.
+
+    """
+
+    # run the function on each subsample
+    outputs = np.array([
+        func(subsample, **kwargs) for subsample in subsamples
+    ])
+    print(outputs.shape)
+
+    # return the square root of the variance -> standard deviation20
+    return np.sqrt(var_jackknife(outputs))
+
+
+def measure_dipole_amps(d, t, loncut=None):
+    """
+    Measure the monopole (1) and dipole (3) amplitudes from a source table and a `SecrestDipole()` object.
     """
     # converts source table to a table of healpix densities with NPIX rows
     t = d._make_healpix_map(t)
@@ -61,7 +91,7 @@ def measure_dipole(d, t, loncut=None):
 
 def dipole_uncertainty_jk(d, nsamples=12):
     """
-    Compute the jackknife variance in the measured dipole, given an input source table `t`.
+    Compute the jackknife variance in the measured dipole, given an input `SecrestDipole()` object `d`.
     """
 
     t = d.table
@@ -78,7 +108,7 @@ def dipole_uncertainty_jk(d, nsamples=12):
 
     # measure dipole in each LOO sample
     bestfit_pars = [
-        measure_dipole(d, t[~idx], loncut=lonedges[i:i+2]) for i, idx in enumerate(idx_to_drop)
+        measure_dipole_amps(d, t[~idx], loncut=lonedges[i:i+2]) for i, idx in enumerate(idx_to_drop)
     ]
 
     # dipole comps: components scaled by the monopole
