@@ -136,6 +136,20 @@ def fit_multipole(map_to_fit, template_maps, Cinv=None, fit_zeros=False, idx=Non
     return bestfit_pars, bestfit_stderr
 
 
+def compute_Cells_from_map(hpmap, max_ell):
+    """
+    Compute the power C(ell) for several ells given an input healpix map and max ell.
+    """
+    # simultaneously fit all low-ell amplitudes
+    ells = np.arange(0, max_ell+1)
+    templates = construct_templates(ells, NSIDE=hp.npix2nside(len(hpmap)))
+    
+    pars, stderr = fit_multipole(hpmap, templates, idx=~np.isnan(hpmap))
+    
+    # return the Cells scaled by the monopole
+    return ells, compute_Cells(pars / (0.5 * np.sqrt(1/np.pi) * pars[0]))
+
+
 def compute_Cells(amps):
     """
     Returns the power C(ell) for several ells given a list of amplitudes corresponding to the a_lm coefficients
@@ -159,7 +173,7 @@ def compute_Cell(alms):
     Returns the power C(ell) given a list of coefficients a_lm for a single ell.
     """
     assert alms.ndim <= 1
-    # pad if aellems is a scalar:
+    # pad if alms is a scalar:
     if alms.ndim == 0:
         alms = alms[..., np.newaxis]
     # infer ell from the number of moments 2ell+1
