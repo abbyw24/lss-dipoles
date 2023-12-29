@@ -46,6 +46,7 @@ def dipole(theta, phi, dipole_x, dipole_y, dipole_z):
     """
     return dipole_x*np.sin(theta)*np.cos(phi) + dipole_y*np.sin(theta)*np.sin(phi) + dipole_z*np.cos(theta)
 
+
 def dipole_map(amps, NSIDE=64):
     """
     Generate a healpix dipole map (equatorial coordinates) given four parameters:
@@ -55,6 +56,7 @@ def dipole_map(amps, NSIDE=64):
     theta, phi = hp.pix2ang(NSIDE, ipix=np.arange(NPIX))  # get (theta,phi) coords of each pixel
     dip = dipole(theta, phi, *amps[1:])  # expected dipole: shape==(NPIX,)
     return amps[0] + dip
+
 
 def fit_dipole(map_to_fit, Cinv=None, fit_zeros=False, idx=None):
     """
@@ -113,6 +115,11 @@ def fit_dipole(map_to_fit, Cinv=None, fit_zeros=False, idx=None):
     return bestfit_pars, bestfit_stderr
 
 
+def compute_dipole_amplitude(hpmap, Cinv=None):
+    amps, stderr = fit_dipole(hpmap, Cinv=Cinv, fit_zeros=False, idx=~np.isnan(hpmap))
+    return np.linalg.norm(amps[1:]) / amps[0]
+
+
 def getDipoleVectors_healpy(densitymap, mask=[None], galcut=0, verbose=False) :
 	"""
     ! COPIED FROM SECREST !
@@ -152,6 +159,7 @@ def cmb_dipole(frame='icrs', amplitude=0.007, return_amps=False):
         return amps
     else:
         return get_dipole(amps, frame=frame)
+
 
 def get_dipole(amps, frame='icrs', verbose=False):
     """
