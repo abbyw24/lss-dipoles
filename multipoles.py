@@ -148,6 +148,7 @@ def compute_Cells_from_map(hpmap, max_ell):
     
     # return the Cells scaled by the monopole
     return ells, compute_Cells(pars / (0.5 * np.sqrt(1/np.pi) * pars[0]))
+    # return ells, compute_Cells(pars / pars[0])
 
 
 def compute_Cells(amps):
@@ -156,13 +157,13 @@ def compute_Cells(amps):
     for each ell, increasing from ell=0.
     """
     ell = 0
-    i1 = 0
+    i1 = 0  # this will give us the starting index to pull from amps for each ell
     Cells = np.array([])
     while i1 < len(amps):
-        i2 = i1 + 2 * ell + 1
-        assert i2 <= len(amps)
-        Cell = compute_Cell(amps[i1:i2])
-        Cells = np.append(Cells, Cell)
+        i2 = i1 + 2 * ell + 1  # stopping index to pull from amps
+        assert i2 <= len(amps)  # make sure we aren't trying to pull more amplitudes than we input!
+        Cell = compute_Cell(amps[i1:i2])  # power for this ell: mean of amps squared
+        Cells = np.append(Cells, Cell)  # add the power for this ell to the list
         ell += 1
         i1 = i2
     return Cells
@@ -173,10 +174,11 @@ def compute_Cell(alms):
     Returns the power C(ell) given a list of coefficients a_lm for a single ell.
     """
     assert alms.ndim <= 1
+    assert np.sum(np.isnan(alms)) == 0, "NaNs in alms!"
     # pad if alms is a scalar:
     if alms.ndim == 0:
         alms = alms[..., np.newaxis]
     # infer ell from the number of moments 2ell+1
     ell = (len(alms) - 1) // 2
-    assert np.mean(alms**2) == np.sum(alms**2)/(2*ell+1)
+    assert np.mean(alms**2) == np.sum(alms**2)/(2*ell+1), f"{np.mean(alms**2):.4f} != {np.sum(alms**2)/(2*ell+1):.4f}!"
     return np.mean(alms**2)
