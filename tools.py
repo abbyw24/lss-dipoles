@@ -12,6 +12,8 @@ import os
 import healpy as hp
 from healpy.newvisufunc import projview
 
+from Secrest.hpx_vs_direction import omega_to_theta
+
 
 def load_catalog_as_map(catalog, frame='icrs', NSIDE=64, dtype=float):
     if type(catalog)==str:
@@ -88,3 +90,35 @@ def plot_marker(lon, lat, **kwargs):
     theta = Angle((np.pi/2 * u.rad) - lat)
     phi = Angle(lon)
     hp.newprojplot(theta, phi.wrap_at(np.pi * u.rad), **kwargs)
+
+
+def label_coord(ax, coordsysstr):
+    ax.text(0.86,
+            0.05,
+            coordsysstr,
+            fontsize=14,
+            fontweight="bold",
+            transform=ax.transAxes)
+
+
+def smooth_map(density_map, verbose=True):
+
+    theta = omega_to_theta(1)  # 1 steradian
+
+    NPIX = len(density_map)
+    lon, lat = hp.pix2ang(hp.npix2nside(NPIX), np.arange(NPIX), lonlat=True)
+    sc = SkyCoord(lon * u.deg, lat * u.deg, frame='icrs')
+
+    # initial column
+    smoothed_map = -1 * np.ones(NPIX)
+    for i, denspix in enumerate(density_map):
+        if np.isnan(denspix):
+            smoothed_map[i] = np.nan
+        else:
+            d2d = sc[i].separation(sc)
+            mask = d2d < theta
+            smoothed_map[i] = np.nanmean(density_map[mask])
+        if verbose:
+            print("%.1f%%" % ((i + 1) / NPIX * 100), end='\r')
+
+    return smoothed_map
