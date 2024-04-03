@@ -71,7 +71,7 @@ def fit_dipole(map_to_fit, Cinv=None, fit_zeros=False, idx=None):
     fit_zeros : bool
         Whether to fit pixels in the map with value zero.
     idx : array-like, optional
-
+        The indices to fit.
 
     Returns
     -------

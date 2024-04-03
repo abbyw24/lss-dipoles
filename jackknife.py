@@ -93,7 +93,7 @@ def get_longitude_subsamples(t, nsamples, NSIDE=64, density_key='elatdenscorr'):
     lonavg : The average galactic longitude of the wedge left out in each subsample.
 
     subsamples : A (nsamples,NPIX) array of healpix maps of the LOO subsamples.
-    
+
     """
 
     assert 0 <= np.all(t['l']) <= 360
