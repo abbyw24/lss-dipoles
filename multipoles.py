@@ -136,6 +136,40 @@ def fit_multipole(map_to_fit, template_maps, Cinv=None, fit_zeros=False, idx=Non
     return bestfit_pars, bestfit_stderr
 
 
+def compute_Cells_from_alms_fit(datamap, Cinv, max_ell, idx_to_fit=None, return_alms=False):
+    """
+    Performs a linear least-squares fit to a healpix density map to get best-fit spherical harmonic amplitudes alm.
+    Automatically excludes NaN and `hp.UNSEEN` pixels in `datamap` from the fit.
+    Returns the Cells as computed from the alms (sum of |alms|^2).
+    
+    """
+    assert datamap.shape == Cinv.shape
+    assert datamap.ndim == Cinv.ndim == 1
+    
+    # get number of pixels from input data map
+    NPIX = len(datamap)
+    
+    # construct Ylm templates -> design matrix
+    ells = np.arange(0, max_ell+1)
+    templates = construct_templates(ells, hp.npix2nside(NPIX))
+    A = templates.T
+    
+    # indices to fit: non-NaN, non-hp.UNSEEN, non-zero
+    if idx_to_fit is None:
+        idx_to_fit = np.full(NPIX, True).astype(bool)
+    idx_to_fit = idx_to_fit & (~np.isnan(datamap)) & (datamap != hp.UNSEEN)
+    map_to_fit, A_fit, Cinv_fit = datamap.copy(), A.copy(), Cinv.copy()
+    
+    # perform the regression: bestfit_pars are the alms
+    bestfit_pars, bestfit_Cinv = tools.lstsq(map_to_fit[idx_to_fit], A_fit[idx_to_fit], Cinv_fit[idx_to_fit])
+    Cells = compute_Cells(bestfit_pars)
+    
+    if return_alms == True:
+        return ells, Cells, bestfit_pars
+    else:
+        return ells, Cells
+
+
 def compute_Cells_from_map(hpmap, max_ell):
     """
     Compute the power C(ell) for several ells given an input healpix map and max ell.
