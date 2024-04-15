@@ -25,8 +25,8 @@ def main():
 
     """INPUT PARAMETERS"""
     nside = 64
-    max_ell = 8
-    ntrials = 20
+    max_ell = 10
+    ntrials = 100
     Wmasks = np.logspace(-2,0,10)
     # catalog_dict = dict(initial_catfn='catwise_agns_master.fits',
     #                     catname='catwise_agns',
@@ -80,7 +80,7 @@ def main():
     # measure Cells on the cut sky
 
     # define function to compute Cells on a cut sky as a function of Wmask
-    def compute_Cells_cutsky(i, Wmask, results_dict):
+    def compute_Cells_cutsky(index, Wmask, results_dict):
         Cells_this_Wmask_trials = np.empty((ntrials, max_ell))
         for i in range(ntrials):
             print(f"Wmask = {Wmask:.2e}: trial {i+1} of {ntrials}\t") #, end='\r')
@@ -97,7 +97,7 @@ def main():
             # fit to spherical harmonics templates
             ells, Cells_ = compute_Cells_from_alms_fit(map_to_fit, Cinv_, max_ell)
             Cells_this_Wmask_trials[i] = Cells_[1:]  # cut out monopole since we're fitting overdensities
-        results_dict[i] = (Wmask, np.nanmean(Cells_this_Wmask_trials, axis=0))
+        results_dict[index] = (Wmask, np.nanmean(Cells_this_Wmask_trials, axis=0))
 
     # multiprocessing pool
     manager = mp.Manager()
@@ -111,10 +111,15 @@ def main():
     for proc in procs:
         proc.join()
 
+    # !! hacky comments
+    quaia_comment = 'Quaia G<20.0, using only selfunc > 0.5'
+    catwise_comment = 'CatWISE'
+    info = quaia_comment if catalog_dict['catname'] == 'quaia' else catwise_comment
 
     results_dict = dict(ells=np.arange(1, max_ell+1),
                         Cells_fullsky=Cells_fullsky,
-                        Cells_cutsky=cutsky_results.values())
+                        Cells_cutsky=cutsky_results.values(),
+                        info=info)
     np.save(save_fn, results_dict)
 
     total_time = time.time()-s 
