@@ -170,19 +170,16 @@ def compute_Cells_from_alms_fit(datamap, Cinv, max_ell, idx_to_fit=None, return_
         return ells, Cells
 
 
-def compute_Cells_from_map(hpmap, max_ell):
-    """
-    Compute the power C(ell) for several ells given an input healpix map and max ell.
-    """
-    # simultaneously fit all low-ell amplitudes
-    ells = np.arange(0, max_ell+1)
-    templates = construct_templates(ells, NSIDE=hp.npix2nside(len(hpmap)))
-    
-    pars, stderr = fit_multipole(hpmap, templates, idx=~np.isnan(hpmap))
-    
-    # return the Cells scaled by the monopole
-    return ells, compute_Cells(pars / (0.5 * np.sqrt(1/np.pi) * pars[0]))
-    # return ells, compute_Cells(pars / pars[0])
+def compute_Cells_in_overdensity_map(overdensity_map, Wmask, max_ell, return_alms=False, selfunc=None,
+                                        idx_to_fit=None):
+    # wrapper for compute_Cells_from_alms_fit() but taking an overdensity map as input,
+    #  to replace all NaN pixels with 0 data and Wmask Cinv
+    map_to_fit = overdensity_map.copy()
+    idx_masked = np.isnan(map_to_fit)
+    map_to_fit[idx_masked] = 0.
+    Cinv = np.ones_like(map_to_fit) if np.all(selfunc == None) else selfunc.copy()
+    Cinv[idx_masked] = Wmask
+    return compute_Cells_from_alms_fit(map_to_fit, Cinv, max_ell, idx_to_fit=idx_to_fit, return_alms=return_alms)
 
 
 def compute_Cells(amps):
