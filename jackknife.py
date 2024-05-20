@@ -16,7 +16,6 @@ import random
 import os
 import sys
 sys.path.insert(0, '/home/aew492/lss-dipoles')
-from Secrest_dipole import SecrestDipole
 from dipole import fit_dipole
 
 
@@ -38,7 +37,7 @@ def covar_jackknife(Y):
     return prefactor * np.sum(X, axis=0)
 
 
-def compute_jackknife_uncertainty(subsamples, func, **kwargs):
+def compute_jackknife_uncertainty(subsamples, func, return_outputs=False, **kwargs):
     """
     Compute the uncertainty on a measurement using jackknife resampling.
 
@@ -66,11 +65,63 @@ def compute_jackknife_uncertainty(subsamples, func, **kwargs):
     # covariance matrix
     covar = covar_jackknife(outputs)
 
-    # return the square root of the variance (diagonal terms)
-    return np.sqrt(np.diag(covar))
+    # uncertainty: square root of the variance (diagonal terms)
+    std = np.sqrt(np.diag(covar))
+
+    if return_outputs == True:
+        return std, outputs
+    else:
+        return std
 
 
-def get_longitude_subsamples(t, nsamples, NSIDE=64, density_key='elatdenscorr'):
+def get_longitude_subsamples_from_hpmap(hpmap, nsamples, input_frame='icrs'):
+    """
+    Return healpix subsamples of a healpix map:
+    divides the sky into equal (galactic) longitude wedges and leaves out one wedge
+    in each subsample.
+
+    Parameters
+    ----------
+    hpmap : healpix map
+        Healpix map to divide into subsamples.
+    nsamples : int
+        Number of subsamples to construct.
+    input_frame : str, optional
+        Sky coordinate system of the input map. Default is ICRS.
+    
+    Returns
+    -------
+    lonavg : The average galactic longitude of the wedge left out in each subsample.
+
+    subsamples : A (nsamples,NPIX) array of healpix maps of the LOO subsamples.
+
+    """
+    # get NPIX from length of the input map
+    NPIX = len(hpmap)
+
+    # longitude bins
+    lonedges = np.linspace(0, 360, nsamples+1) << u.deg
+    lonavg = 0.5 * (lonedges[1:] + lonedges[:-1])
+
+    # get the central sky coordinate of each healpixel
+    lon, lat = hp.pix2ang(hp.npix2nside(NPIX), np.arange(NPIX), lonlat=True)
+    sc = SkyCoord(lon * u.deg, lat * u.deg, frame=input_frame).galactic
+
+    # construct subsamples
+    subsamples = np.empty((nsamples, NPIX))
+    # in each longitude bin, construct the LOO sample, and run the function
+    for i in range(nsamples):
+        # galactic coordinates: get pixel indices of each slice
+        idx_to_cut = (sc.l >= lonedges[i] - 1*u.deg) & (sc.l<<u.deg < lonedges[i+1] + 1*u.deg)
+        # make healpix map
+        subsample = np.full(NPIX, np.nan)
+        subsample[~idx_to_cut] = hpmap[~idx_to_cut]
+        subsamples[i] = subsample
+
+    return lonavg, subsamples
+
+
+def get_longitude_subsamples_from_hptable(t, nsamples, NSIDE=64, density_key='elatdenscorr'):
     """
     Return healpix subsamples of a density map from a healpix table `t`:
     divides the sky into equal (galactic) longitude wedges and leaves out one wedge
