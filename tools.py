@@ -37,19 +37,17 @@ def load_catalog_as_map(catalog, frame='icrs', NSIDE=64, dtype=float):
     return hpmap.astype(dtype)
 
 
-def get_galactic_mask(blim, NSIDE=64, frame='icrs'):
-    """Returns a HEALPix mask around the galactic plane given an absolute b (latitude) limit."""
-    NPIX = hp.nside2npix(NSIDE)
-    lon, lat = hp.pix2ang(NSIDE, ipix=np.arange(NPIX), lonlat=True)
-    coords = SkyCoord(lon, lat, frame=frame, unit='deg')
-    idx_to_cut = (np.abs(coords.galactic.b.deg) < blim)
-    galactic_mask = np.full(NPIX, True)
-    galactic_mask[idx_to_cut] = False
-    return galactic_mask
+def get_galactic_plane_mask(blim, NSIDE=64, frame='icrs'):
+    """Returns a HEALPix mask (1s and 0s) around the galactic plane given an absolute b (latitude) limit."""
+    lon, lat = hp.pix2ang(NSIDE, np.arange(hp.nside2npix(NSIDE)), lonlat=True)
+    b = SkyCoord(lon * u.deg, lat * u.deg, frame='icrs').galactic.b
+    gal_plane_mask = np.zeros(hp.nside2npix(NSIDE))
+    gal_plane_mask[np.abs(b.deg) >= blim] = 1
+    return gal_plane_mask
 
 
-def flatten_map(sf_map):
-    newarr = np.array([row[0] for row in sf_map])
+def flatten_map(hpmap):
+    newarr = np.array([row[0] for row in hpmap])
     return np.reshape(newarr, (newarr.size,))
 
 
@@ -67,12 +65,14 @@ def mollview(map, coord=['C'], graticule=True, graticule_coord=None, graticule_l
         hp.graticule(coord=gratcoord)
 
 
-def lstsq(Y, A, Cinv):
+def lstsq(Y, A, Cinv, Lambda=0):
     """
     Return the least-squares solution to a linear matrix equation,
-    given data Y, design matrix A, and inverse covariance Cinv.
+    given data Y, design matrix A, inverse covariance Cinv, and
+    optional regularization term Lambda.
     BUG:
     - This should catch warnings and errors in the `res` object.
+    Theta = [ A.T @ C^{-1} @ A ]^{-1} @ [ A.T @ C^{-1} @ Y ]
     """
     if len(Cinv.shape)==1:
         a = A.T @ (Cinv[:,None] * A)
@@ -80,6 +80,8 @@ def lstsq(Y, A, Cinv):
     else:
         a = A.T @ Cinv @ A
         b = A.T @ Cinv @ Y
+    # add regularization term
+    a += Lambda * np.identity(len(a))
     res = np.linalg.lstsq(a, b, rcond=None)
     return res[0], a
 
