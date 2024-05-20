@@ -102,14 +102,25 @@ def fit_dipole(map_to_fit, Cinv=None, fit_zeros=False, idx=None, Lambda=0):
     return bestfit_pars, bestfit_stderr
 
 
-def measure_dipole_in_overdensity_map(sample, selfunc=None, Wmask=0.1):
+def measure_dipole_in_overdensity_map(sample, selfunc=None, Wmask=0.1, verbose=False):
+    """
+    Wrapper for `dipole.fit_dipole()`.
+    """
     map_to_fit = sample.copy()
     idx_masked = np.isnan(map_to_fit)
     map_to_fit[idx_masked] = 0.
-    Cinv = np.ones_like(sample) if np.all(selfunc == None) else selfunc.copy()
+    if np.all(selfunc == None):
+        print("selection function not provided; assuming completeness = 1 everywhere")
+        Cinv = np.ones_like(sample)
+    else:
+        Cinv = selfunc.copy()
     Cinv[idx_masked] = Wmask
-    amps, stderr = fit_dipole(map_to_fit, Cinv=Cinv, fit_zeros=True)
-    return amps[1:] # since we're fitting overdensities
+    comps, stderr = fit_dipole(map_to_fit, Cinv=Cinv, fit_zeros=True)
+    if verbose:
+        amplitude, direction = get_dipole(comps)
+        print(f"best-fit dipole amp. =\t{dipole_amp:.5f}")
+        print(f"best-fit dipole dir.: ", direction)
+    return comps[1:] # since we're fitting overdensities
 
 
 def getDipoleVectors_healpy(densitymap, mask=[None], galcut=0, verbose=False) :
