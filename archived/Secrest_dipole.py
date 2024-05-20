@@ -61,7 +61,7 @@ def main():
     # delRW_tag = f'_RW{delRW:.3f}' if delRW != 0. else ''
     # initial_catfn = f'catwise_agns_master{Rv_tag}{delRW_tag}.fits'
 
-    mask_factor = 2.5
+    mask_factor = 1
     mask_fn = f'/scratch/aew492/quasars/catalogs/masks/mask_master_hpx_r{mask_factor:.1f}.fits' if mask_factor>0. else None
     save_tag = f'_r{mask_factor:.1f}'
 
@@ -82,12 +82,12 @@ def main():
                                     delRW=delRW,
                                     save_tag=save_tag)
     elif catname == 'quaia':
-        dipoleset = SecrestDipole(initial_catfn='quaia_G20.5.fits',
+        dipoleset = SecrestDipole(initial_catfn='quaia_G20.0.fits',
                                     catname='quaia',
                                     mask_fn=mask_fn,
                                     mag='G',
                                     maglim=20.,
-                                    blim=30,
+                                    blim=10,
                                     compcorrect=True,
                                     save_tag=save_tag)
     else:
@@ -440,7 +440,7 @@ class SecrestDipole():
         hpmap = t[key]
         # which selection function to use
         maglim = 20.0 if self.maglim <= 20.25 else 20.5
-        selfunc = self.load_selfunc(maglim=maglim) #, selfunc_fn=f'/scratch/aew492/quasars/catalogs/quaia/old_releases/selection_function_NSIDE{self.NSIDE}_G{self.maglim:.1f}.fits') # !!
+        selfunc = self.load_selfunc(maglim=maglim)
         hpmap_corr = np.full(len(hpmap), hp.UNSEEN)
         hpmap_corr = np.divide(hpmap, selfunc[t['hpidx']], out=hpmap_corr, where=((hpmap!=hp.UNSEEN) & (selfunc[t['hpidx']]!=0.)))
         t[key] = hpmap_corr
@@ -702,8 +702,7 @@ class SecrestDipole():
         return Table.read(os.path.join(self.savedir_, f'{self.catname}_hpx_smoothed.fits'))
     
     def load_selfunc(self, maglim=20., selfunc_fn=None):
-        assert self.catname == 'quaia', "catalog must be Quaia"
-        selfunc_fn = os.path.join(self.catdir,
+        selfunc_fn = os.path.join(self.catdir, 'selfuncs',
                                 f'selection_function_NSIDE{self.NSIDE}_{self.mag}{maglim:.1f}.fits') \
                     if selfunc_fn is None else selfunc_fn
         return tools.flatten_map(Table.read(selfunc_fn))
