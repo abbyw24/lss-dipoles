@@ -25,19 +25,6 @@ def spherical_to_cartesian(r, theta, phi):
     return np.array([x, y, z])
 
 
-
-### ELLIS & BALDWIN APPROXIMATION
-
-def EllisBaldwin(x, alpha, v=369.825*u.km/u.s):
-    """
-    Return the expected dipole amplitude from Ellis & Baldwin (1984), given
-        x = number-count slope at flux density limit
-        alpha = source spectral index assuming power law spectra
-    """
-    return v / const.c.to(u.km/u.s) * (2 + x * (1+alpha))
-
-
-
 ### DIPOLE CONTRIBUTIONS
 
 def dipole(theta, phi, dipole_x, dipole_y, dipole_z):
@@ -58,7 +45,7 @@ def dipole_map(amps, NSIDE=64):
     return amps[0] + dip
 
 
-def fit_dipole(map_to_fit, Cinv=None, fit_zeros=False, idx=None):
+def fit_dipole(map_to_fit, Cinv=None, fit_zeros=False, idx=None, Lambda=0):
     """
     Perform a least-squares fit to the dipole in a healpix map.
 
@@ -107,7 +94,7 @@ def fit_dipole(map_to_fit, Cinv=None, fit_zeros=False, idx=None):
     map_to_fit, A, Cinv = map_to_fit[idx_to_fit], A[idx_to_fit], Cinv[idx_to_fit]
 
     # perform the regression
-    bestfit_pars, bestfit_Cinv = tools.lstsq(map_to_fit, A, Cinv)
+    bestfit_pars, bestfit_Cinv = tools.lstsq(map_to_fit, A, Cinv, Lambda=Lambda)
 
     # uncertainties on the best-fit pars
     bestfit_stderr = np.sqrt(np.diag(np.linalg.inv(bestfit_Cinv)))
@@ -115,9 +102,14 @@ def fit_dipole(map_to_fit, Cinv=None, fit_zeros=False, idx=None):
     return bestfit_pars, bestfit_stderr
 
 
-def compute_dipole_amplitude(hpmap, Cinv=None):
-    amps, stderr = fit_dipole(hpmap, Cinv=Cinv, fit_zeros=False, idx=~np.isnan(hpmap))
-    return np.linalg.norm(amps[1:]) / amps[0]
+def measure_dipole_in_overdensity_map(sample, selfunc=None, Wmask=0.1):
+    map_to_fit = sample.copy()
+    idx_masked = np.isnan(map_to_fit)
+    map_to_fit[idx_masked] = 0.
+    Cinv = np.ones_like(sample) if np.all(selfunc == None) else selfunc.copy()
+    Cinv[idx_masked] = Wmask
+    amps, stderr = fit_dipole(map_to_fit, Cinv=Cinv, fit_zeros=True)
+    return amps[1:] # since we're fitting overdensities
 
 
 def getDipoleVectors_healpy(densitymap, mask=[None], galcut=0, verbose=False) :
@@ -146,13 +138,13 @@ def cmb_dipole(frame='icrs', amplitude=0.007, return_amps=False):
     """
     cmb_dipdir = SkyCoord(264, 48, unit=u.deg, frame='galactic')
     if frame=='icrs':
-        amps = np.array([1., *spherical_to_cartesian(r=amplitude,
+        amps = spherical_to_cartesian(r=amplitude,
                                              theta=np.pi/2-cmb_dipdir.icrs.dec.rad,
-                                             phi=cmb_dipdir.icrs.ra.rad)])
+                                             phi=cmb_dipdir.icrs.ra.rad)
     elif frame=='galactic':
-        amps = np.array([1., *spherical_to_cartesian(r=amplitude,
+        amps = spherical_to_cartesian(r=amplitude,
                                              theta=np.pi/2-cmb_dipdir.b.rad,
-                                             phi=cmb_dipdir.l.rad)])
+                                             phi=cmb_dipdir.l.rad)
     else:
         assert False, "unknown frame"
     if return_amps is True:
@@ -163,25 +155,25 @@ def cmb_dipole(frame='icrs', amplitude=0.007, return_amps=False):
 
 def get_dipole(amps, frame='icrs', verbose=False):
     """
-    Return the amplitude and direction of a dipole given its four amplitudes.
+    Return the amplitude and direction of a dipole given its three amplitudes.
 
     Parameters
     ----------
     amps : array-like
-        monopole + 3 orthogonal dipole amplitudes
+        3 orthogonal dipole amplitudes
     frame : SkyCoord-compatible coordinate frame
         frame of the input amplitudes
     
     Returns
     -------
     amp : float
-        amplitude (norm) of the dipole components divided by the monopole
+        amplitude (norm) of the dipole components
     direction : SkyCoord
         direction of the dipole
     """
-    
-    amp = np.linalg.norm(amps[1:]/amps[0])
-    direction = hp.vec2dir(amps[1:])
+    assert len(amps) == 3
+    amp = np.linalg.norm(amps)
+    direction = hp.vec2dir(amps)
     direction = SkyCoord(direction[1], np.pi/2 - direction[0], frame=frame, unit='rad')
     if verbose:
         print(f"amp = {amp:.6f}")
