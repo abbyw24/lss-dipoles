@@ -164,7 +164,7 @@ def cmb_dipole(frame='icrs', amplitude=0.007, return_amps=False):
         return get_dipole(amps, frame=frame)
 
 
-def get_dipole(amps, frame='icrs', verbose=False):
+def get_dipole(amps, frame='icrs', from_alms=False, verbose=False):
     """
     Return the amplitude and direction of a dipole given its three amplitudes.
 
@@ -183,6 +183,8 @@ def get_dipole(amps, frame='icrs', verbose=False):
         direction of the dipole
     """
     assert len(amps) == 3
+    if from_alms:  # if the amplitudes are output from fitting alms, need to switch the order!!
+        amps = amps[2], amps[0], amps[1]  
     amp = np.linalg.norm(amps)
     direction = hp.vec2dir(amps)
     direction = SkyCoord(direction[1], np.pi/2 - direction[0], frame=frame, unit='rad')
