@@ -24,20 +24,19 @@ import tools
 class QSOSample():
 
     def __init__(self,
-                    catname,
                     initial_catfn,
                     mag, maglim,
                     mask_fn=None,
                     blim=30,
                     NSIDE=64,
                     load_init=True,
+                    delete_init=True,
                     basedir='/scratch1/08811/aew492/quasars/catalogs'):
 
         # asserts
         assert initial_catfn.endswith('.fits'), "initial catalog must be a fits file"
 
         # input parameters
-        self.catname = catname
         self.initial_catfn = initial_catfn
         self.mag = mag.upper()
         self.maglim = maglim
@@ -49,6 +48,8 @@ class QSOSample():
         # load initial catalog as an astropy table
         if load_init:
             self.load_initial_cattab()
+            if delete_init:
+                del self.initial_cattab
 
     
     """
@@ -56,7 +57,7 @@ class QSOSample():
     """
     def load_initial_cattab(self):
         self.log(f"loading initial catalog, {self.initial_catfn}")
-        self.initial_cattab = Table.read(self.initial_catfn), format='fits')
+        self.initial_cattab = Table.read(self.initial_catfn, format='fits')
         if not hasattr(self, 'cattab'):
             self._update_working(self.initial_cattab)
         self.log(f"{len(self.initial_cattab)} sources in initial catalog.")
@@ -69,12 +70,12 @@ class QSOSample():
     Magnitude and galactic plane cuts.
     """
     def cut_mag(self):
-        if self.mag == 'g':
+        if self.mag == 'G':
             key = 'phot_g_mean_mag'
         else:
-            key = self.mag
+            key = self.mag.lower()
         self._update_working(self.table[self.table[key] <= self.maglim])
-        self.log(f"cut {self.mag.upper()} > {self.maglim} -> {len(self.table)} sources left.")
+        self.log(f"cut {self.mag} > {self.maglim} -> {len(self.table)} sources left.")
 
     def cut_galactic_plane(self):
         self._update_working(self.table[np.abs(self.table['b']) > self.blim])
@@ -147,30 +148,36 @@ class QSOSample():
         # total mask: galactic plane, smaller masks, plus minimum completeness criterion
         self.mask = gal_plane_mask.astype(bool) & small_masks.astype(bool) & (selfunc > min_completeness)
 
+        # also save min completeness used
+        self.min_completeness = min_completeness
+
     def load_datamap(self):
         """
         Loads the working source table as a healpix map with resolution `NSIDE`.
         """
         self.datamap = tools.load_catalog_as_map(self.table, NSIDE=self.NSIDE)
 
-    def construct_masked_datamap(self, selfunc=None, min_completeness=0.5):
+    def construct_masked_datamap(self, selfunc=None, min_completeness=0.5, return_map=False):
         """
         Mask the catalog at the healpix level, and correct the densities by a selection function.
         """
         if not hasattr(self, 'datamap'):
             self.load_datamap()
         selfunc = self.get_selfunc(selfunc)
-        self.define_healpix_mask(selfunc, min_completeness)
+        if not hasattr(self, 'mask') or min_completeness != self.min_completeness:
+            self.define_healpix_mask(selfunc, min_completeness)
         masked_datamap_uncorr = np.multiply(self.datamap, self.mask, where=(self.mask!=0), out=np.full_like(self.datamap, np.nan))
         # correct by selection function
         self.masked_datamap = masked_datamap_uncorr / selfunc
+        if return_map:
+            return self.masked_datamap
 
     def construct_overdensity_map(self, selfunc=None, min_completeness=0.5):
         """
         Construct a healpix map of source overdensities from the working source table.
         """
 
-        self.log("constructing overdensity map...")
+        self.log("constructing overdensity map")
 
         # get selection function
         selfunc = self.get_selfunc(selfunc)
