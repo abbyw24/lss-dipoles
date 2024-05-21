@@ -183,13 +183,15 @@ def compute_expected_dipole_wise(table, maglimit=16.4, min_w1=16., max_w1=16.5,
     """
     Compute the expected dipole from the Ellis-Baldwin formula given an input source table.
     """
+    if verbose:
+        print("computing expected dipole from Ellis-Baldwin:")
 
     # X: number-count slope at magnitude limit
     mags = table['w1']
     mag_grid, counts = compute_number_counts(mags, min_w1, max_w1)
     x = compute_x(mag_grid, counts, maglimit)
     if verbose:
-        print(f"number-count slope x = {x:.3f}")
+        print(f"\tnumber-count slope x = {x:.3f}")
 
     # ALPHA: effective spectral index
     # only compute alpha from sources within the magnitude limit
@@ -202,12 +204,12 @@ def compute_expected_dipole_wise(table, maglimit=16.4, min_w1=16., max_w1=16.5,
     ]
     alpha = np.mean(alphas)
     if verbose:
-        print(f"effective alpha = {alpha:.3f}")
+        print(f"\teffective alpha = {alpha:.3f}")
     
     # put it all together
     expected_dipole_amplitude = EllisBaldwin(x, alpha)
     if verbose:
-        print(f"expected dipole amplitude = {expected_dipole_amplitude:.4f}")
+        print(f"\texpected dipole amplitude = {expected_dipole_amplitude:.4f}")
     
     if return_full_results:
         res = dict(alpha=alpha, alphas=alphas,
