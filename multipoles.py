@@ -80,6 +80,30 @@ def construct_templates(ells, NSIDE=64):
     
     return templatess
 
+def reconstruct_map(alms, NSIDE=64):
+    """
+    Reconstruct a healpix map from a list of spherical harmonic coefficients a_lm.
+    """
+    # iterative over ells to correctly assign the alms to their respective multipoles
+    reconstructed_map = np.zeros(hp.nside2npix(NSIDE))
+    ell = 0
+    i1 = 0  # this will give us the starting index to pull from amps for each ell
+    while i1 < len(alms):
+        i2 = i1 + 2 * ell + 1  # stopping index to pull from amps
+        assert i2 <= len(alms)  # make sure we aren't trying to pull more amplitudes than we input!
+        # construct the 2ell+1 templates
+        ells = np.arange(ell+1)
+        templates = construct_templates(ells, NSIDE=NSIDE)
+        # add the map for this ell to the overall reconstructed map
+        map_thisell = np.zeros_like(reconstructed_map)
+        for im, alm_ in enumerate(alms[i1:i2]):
+            map_thisell += alm_ * templates[i1:i2][im]
+        reconstructed_map += map_thisell
+        ell += 1
+        i1 = i2
+        
+    return reconstructed_map
+
 
 def fit_multipole(map_to_fit, template_maps, Cinv=None, fit_zeros=False, idx=None):
     """
