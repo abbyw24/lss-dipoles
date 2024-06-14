@@ -105,7 +105,7 @@ def reconstruct_map(alms, NSIDE=64):
     return reconstructed_map
 
 
-def fit_multipole(map_to_fit, template_maps, Cinv=None, fit_zeros=False, idx=None):
+def fit_multipole(map_to_fit, template_maps, Cinv=None, fit_zeros=False, idx=None, Lambda=0.):
     """
     Fits multipole amplitudes to an input healpix density map.
     
@@ -152,7 +152,7 @@ def fit_multipole(map_to_fit, template_maps, Cinv=None, fit_zeros=False, idx=Non
     map_to_fit, A, Cinv = map_to_fit[idx_to_fit], A[idx_to_fit], Cinv[idx_to_fit]
 
     # perform the regression
-    bestfit_pars, bestfit_Cinv = tools.lstsq(map_to_fit, A, Cinv)
+    bestfit_pars, bestfit_Cinv = tools.lstsq(map_to_fit, A, Cinv, Lambda=Lambda)
 
     # uncertainties on the best-fit pars
     bestfit_stderr = np.sqrt(np.diag(np.linalg.inv(bestfit_Cinv)))
@@ -160,7 +160,7 @@ def fit_multipole(map_to_fit, template_maps, Cinv=None, fit_zeros=False, idx=Non
     return bestfit_pars, bestfit_stderr
 
 
-def compute_Cells_from_alms_fit(datamap, Cinv, max_ell, idx_to_fit=None, return_alms=False):
+def compute_Cells_from_alms_fit(datamap, Cinv, max_ell, idx_to_fit=None, return_alms=False, Lambda=0.):
     """
     Performs a linear least-squares fit to a healpix density map to get best-fit spherical harmonic amplitudes alm.
     Automatically excludes NaN and `hp.UNSEEN` pixels in `datamap` from the fit.
@@ -185,7 +185,8 @@ def compute_Cells_from_alms_fit(datamap, Cinv, max_ell, idx_to_fit=None, return_
     map_to_fit, A_fit, Cinv_fit = datamap.copy(), A.copy(), Cinv.copy()
     
     # perform the regression: bestfit_pars are the alms
-    bestfit_pars, bestfit_Cinv = tools.lstsq(map_to_fit[idx_to_fit], A_fit[idx_to_fit], Cinv_fit[idx_to_fit])
+    bestfit_pars, bestfit_Cinv = tools.lstsq(map_to_fit[idx_to_fit], A_fit[idx_to_fit], Cinv_fit[idx_to_fit],
+                                                Lambda=Lambda)
     Cells = compute_Cells(bestfit_pars)
     
     if return_alms == True:
@@ -194,7 +195,7 @@ def compute_Cells_from_alms_fit(datamap, Cinv, max_ell, idx_to_fit=None, return_
         return ells, Cells
 
 
-def compute_Cells_in_overdensity_map(overdensity_map, Wmask, max_ell, return_alms=False, selfunc=None,
+def compute_Cells_in_overdensity_map_Wmask(overdensity_map, Wmask, max_ell, return_alms=False, selfunc=None,
                                         idx_to_fit=None):
     # wrapper for compute_Cells_from_alms_fit() but taking an overdensity map as input,
     #  to replace all NaN pixels with 0 data and Wmask Cinv
@@ -204,6 +205,17 @@ def compute_Cells_in_overdensity_map(overdensity_map, Wmask, max_ell, return_alm
     Cinv = np.ones_like(map_to_fit) if np.all(selfunc == None) else selfunc.copy()
     Cinv[idx_masked] = Wmask
     return compute_Cells_from_alms_fit(map_to_fit, Cinv, max_ell, idx_to_fit=idx_to_fit, return_alms=return_alms)
+
+def compute_Cells_in_overdensity_map_Lambda(overdensity_map, Lambda, max_ell, return_alms=False, selfunc=None,
+                                        idx_to_fit=None):
+    # wrapper for compute_Cells_from_alms_fit() but taking an overdensity map as input,
+    #  to replace all NaN pixels with 0 data, and use Lambda regularization in the fit
+    map_to_fit = overdensity_map.copy()
+    idx_masked = np.isnan(map_to_fit)
+    map_to_fit[idx_masked] = 0.
+    Cinv = np.ones_like(map_to_fit) if np.all(selfunc == None) else selfunc.copy()
+    return compute_Cells_from_alms_fit(map_to_fit, Cinv, max_ell, idx_to_fit=idx_to_fit, return_alms=return_alms,
+                                        Lambda=Lambda)
 
 
 def compute_Cells(amps):
