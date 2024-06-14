@@ -81,7 +81,7 @@ def lstsq(Y, A, Cinv, Lambda=0):
         a = A.T @ Cinv @ A
         b = A.T @ Cinv @ Y
     # add regularization term
-    a += Lambda * np.identity(len(a))
+    a += Lambda * len(Y) * np.identity(len(a))
     res = np.linalg.lstsq(a, b, rcond=None)
     return res[0], a
 
