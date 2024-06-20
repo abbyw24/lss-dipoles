@@ -166,7 +166,7 @@ class QSOSample():
         selfunc = self.get_selfunc(selfunc)
         if not hasattr(self, 'mask') or min_completeness != self.min_completeness:
             self.define_healpix_mask(selfunc, min_completeness)
-        masked_datamap_uncorr = np.multiply(self.datamap, self.mask, where=(self.mask!=0), out=np.full_like(self.datamap, np.nan))
+        masked_datamap_uncorr = np.multiply(self.datamap, self.mask, where=(self.mask!=0), out=np.full(len(self.datamap), np.nan))
         # correct by selection function
         self.masked_datamap = masked_datamap_uncorr / selfunc
         if return_map:
