@@ -78,8 +78,38 @@ class QSOSample():
         self.log(f"cut {self.mag} > {self.maglim} -> {len(self.table)} sources left.")
 
     def cut_galactic_plane(self):
+        """
+        Cuts any sources from the working table within self.blim of the galactic plane.
+        """
         self._update_working(self.table[np.abs(self.table['b']) > self.blim])
         self.log(f"cut |b| <= {self.blim} -> {len(self.table)} sources left.")
+
+    def cut_galactic_plane_hpx(self):
+        """
+        Cuts any sources from the working table which will fall into the _healpix_
+        galactic plane mask.
+        """
+        # get healpix galactic plane mask: 1 in unmasked, 0 in masked pixels
+        gal_plane_mask = tools.get_galactic_plane_mask(self.blim, self.NSIDE, frame='icrs')
+
+        # list of pixel indices that we want to mask
+        hpidx = np.arange(self.NPIX)
+        hpidx_to_keep = hpidx[gal_plane_mask.astype(bool)]
+
+        # get the pixel indices of each source in the table
+        sc = SkyCoord(self.table['ra'], self.table['dec'], frame='icrs')
+        theta = -(sc.dec - 90 * u.deg).radian
+        phi = sc.ra.radian
+        hpidx_sources = hp.ang2pix(self.NSIDE, theta, phi)
+
+        # boolean list of which sources to keep
+        sources_to_keep = [
+            (idx in hpidx_to_keep) for idx in hpidx_sources
+        ]
+        
+        # finally, update the working table
+        self._update_working(self.table[sources_to_keep])
+        self.log(f"cut |b| <= {self.blim} based on healpix mask -> {len(self.table)} sources left.")
     
 
     """
