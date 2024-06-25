@@ -11,7 +11,7 @@ import sys
 
 import tools
 from qso_sample import QSOSample
-from multipoles import compute_Cells_in_overdensity_map
+from multipoles import compute_Cells_in_overdensity_map_Lambda
 
 def main():
 
@@ -19,11 +19,11 @@ def main():
 
     """INPUT PARAMETERS"""
     nside = 64
-    max_ell = 8
-    ntrialss = np.arange(0, 2001, 5)
-    ntrialss[0] += 1
-    # ntrials = 1000
-    Wmasks = np.logspace(-2, 0, 10)
+    max_ells = [8]
+    # ntrialss = np.arange(0, 2001, 5)
+    # ntrialss[0] += 1
+    ntrials = 500
+    Lambdas = np.logspace(-3, -1, 10)
 
     # instantiate a dipole object
     print(f"creating dipole object", flush=True)
@@ -54,12 +54,12 @@ def main():
         comment = f'Quaia G<{d.maglim}, masking completeness < 0.5; ' + \
                 'correcting by completeness to estimate mean source density mu, but NOT weighting by completeness in lstsq'
     # cut galactic plane, magnitude, and load selection function
-    d.cut_galactic_plane()
+    d.cut_galactic_plane_hpx()
     d.cut_mag()
     selfunc = d.get_selfunc(selfunc=selfunc_fn)
 
     # where to save
-    save_dir = os.path.join(f'/scratch/aew492/quasars/noise_Cells/{sample}')
+    save_dir = os.path.join(f'/scratch/aew492/quasars/noise_Cells', sample)
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
 
@@ -124,20 +124,23 @@ def main():
 
     def run_cut_sky():
         for i, max_ell in enumerate(max_ells):
-            # define function (for multiprocessing) to compute Cells on a cut sky as a function of Wmask
-            def compute_Cells_cutsky(index, Wmask, results_dict):
-                Cells_this_Wmask_trials = np.empty((ntrials, max_ell))
+            # define function (for multiprocessing) to compute Cells on a cut sky as a function of Lambda
+            def compute_Cells_cutsky(index, Lambda, results_dict):
+                Cells_this_Lambda_trials = np.empty((ntrials, max_ell))
                 for i in range(ntrials):
-                    print(f"Wmask = {Wmask:.2e}: trial {i+1} of {ntrials}", flush=True)
+                    if i % 10 == 0:
+                        print(f"max_ell = {int(max_ell)}, Lambda = {Lambda:.2e}: trial {i+1} of {ntrials}", flush=True)
                     # noise realization for this trial, MASKED, with the mean density, on the full sky
                     noise = np.random.poisson(mu, hp.nside2npix(nside)).astype(float)
                     noise[~mask] = np.nan
                     # map to fit is the overdensities
                     map_to_fit = noise / np.nanmean(noise) - 1
                     # fit to spherical harmonics templates
-                    ells, Cells_ = compute_Cells_in_overdensity_map(map_to_fit, Wmask=Wmask, max_ell=int(max_ell))
-                    Cells_this_Wmask_trials[i] = Cells_[1:]  # cut out monopole since we're fitting overdensities
-                results_dict[index] = (Wmask, np.nanmean(Cells_this_Wmask_trials, axis=0))
+                    ells, Cells_ = compute_Cells_in_overdensity_map_Lambda(map_to_fit, Lambda, max_ell=int(max_ell))
+                    Cells_this_Lambda_trials[i] = Cells_[1:]  # cut out monopole since we're fitting overdensities
+                Cells_this_Lambda = np.nanmean(Cells_this_Lambda_trials, axis=0)
+                std_this_Lambda = np.nanstd(Cells_this_Lambda_trials, axis=0)
+                results_dict[index] = (Lambda, Cells_this_Lambda, std_this_Lambda)
 
             # multiprocessing Process
             print(f"computing Cells on the cut sky...", flush=True)
@@ -145,8 +148,8 @@ def main():
             manager = mp.Manager()
             procs = []
             cutsky_results = manager.dict()
-            for i, Wmask in enumerate(Wmasks):
-                proc = mp.Process(target=compute_Cells_cutsky, args=(i, Wmask, cutsky_results,))
+            for i, Lambda in enumerate(Lambdas):
+                proc = mp.Process(target=compute_Cells_cutsky, args=(i, Lambda, cutsky_results,))
                 procs.append(proc)
                 proc.start()
             
@@ -158,14 +161,14 @@ def main():
                                 selfunc_fn=selfunc_fn,
                                 mu=mu,
                                 comment=comment)
-            save_fn = os.path.join(save_dir, f'noise_Cells_cutsky_ellmax{int(max_ell)}_{ntrials}trials.npy')
+            save_fn = os.path.join(save_dir, f'noise_Cells_cutsky_ellmax{int(max_ell)}_{ntrials}trials_Lambda.npy')
             np.save(save_fn, results_dict)
             print(f"saved to {save_fn}", flush=True)
 
 
     """ RUN """
     # which function to actually run:
-    run_convergence()
+    run_cut_sky()
 
     total_time = time.time()-s 
     print(f"total time = {datetime.timedelta(seconds=total_time)}", flush=True)
@@ -178,9 +181,9 @@ def compute_Cells_fullsky(itrial, mu, nside, max_ell, verbose=True):
     noise = np.random.poisson(mu, hp.nside2npix(int(nside))).astype(float)
     # map to fit is the overdensities
     map_to_fit = noise / np.mean(noise) - 1
-    assert np.sum(np.isnan(map_to_fit)) == 0.  # in this case Wmask is not used !
+    assert np.sum(np.isnan(map_to_fit)) == 0.  # in this case Lambda is not used !
     # fit to spherical harmonics templates
-    ells, Cells_fullsky = compute_Cells_in_overdensity_map(map_to_fit, Wmask=0., max_ell=int(max_ell))
+    ells, Cells_fullsky = compute_Cells_in_overdensity_map_Lambda(map_to_fit, Lambda=0., max_ell=int(max_ell))
     return Cells_fullsky[1:]  # cut out monopole since we're fitting overdensities
 
 
