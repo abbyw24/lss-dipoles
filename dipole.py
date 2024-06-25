@@ -102,7 +102,7 @@ def fit_dipole(map_to_fit, Cinv=None, fit_zeros=False, idx=None, Lambda=0):
     return bestfit_pars, bestfit_stderr
 
 
-def measure_dipole_in_overdensity_map(sample, selfunc=None, fit_zeros=True, Wmask=0.1, verbose=False):
+def measure_dipole_in_overdensity_map_Wmask(sample, selfunc=None, fit_zeros=True, Wmask=0.1, verbose=False):
     """
     Wrapper for `dipole.fit_dipole()`.
     """
@@ -116,6 +116,27 @@ def measure_dipole_in_overdensity_map(sample, selfunc=None, fit_zeros=True, Wmas
         Cinv = selfunc.copy()
     Cinv[idx_masked] = Wmask
     comps, stderr = fit_dipole(map_to_fit, Cinv=Cinv, fit_zeros=fit_zeros)
+    if verbose:
+        amplitude, direction = get_dipole(comps[1:])
+        print(f"best-fit dipole amp. =\t{amplitude:.5f}")
+        print(f"best-fit dipole dir.: ", direction)
+    return comps[1:] # since we're fitting overdensities
+
+
+def measure_dipole_in_overdensity_map_Lambda(sample, selfunc=None, fit_zeros=True, Lambda=0.1, verbose=False):
+    """
+    Wrapper for `dipole.fit_dipole()`.
+    """
+    map_to_fit = sample.copy()
+    idx_masked = np.isnan(map_to_fit)
+    map_to_fit[idx_masked] = 0.
+    if np.all(selfunc == None):
+        print("selection function not provided; assuming completeness = 1 everywhere")
+        Cinv = np.ones_like(sample)
+    else:
+        Cinv = selfunc.copy()
+    Cinv[idx_masked] = 0. # for Lambda regularization, Cinv is zero in the masked pixels
+    comps, stderr = fit_dipole(map_to_fit, Cinv=Cinv, fit_zeros=fit_zeros, Lambda=Lambda)
     if verbose:
         amplitude, direction = get_dipole(comps[1:])
         print(f"best-fit dipole amp. =\t{amplitude:.5f}")
