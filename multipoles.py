@@ -214,6 +214,7 @@ def compute_Cells_in_overdensity_map_Lambda(overdensity_map, Lambda, max_ell, re
     idx_masked = np.isnan(map_to_fit)
     map_to_fit[idx_masked] = 0.
     Cinv = np.ones_like(map_to_fit) if np.all(selfunc == None) else selfunc.copy()
+    Cinv[idx_masked] = 0. # Cinv is zero in the masked pixels
     return compute_Cells_from_alms_fit(map_to_fit, Cinv, max_ell, idx_to_fit=idx_to_fit, return_alms=return_alms,
                                         Lambda=Lambda)
 
