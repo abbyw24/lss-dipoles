@@ -28,6 +28,7 @@ def multipole_map(amps, NSIDE=64):
     Return a healpix map of a multipole given input amplitude of each component `amps`.
     The input `amps` must be ordered in increasing m, i.e. -ell to ell.
     """
+    amps = np.array(amps)
     assert amps.ndim <= 1
     if amps.ndim == 0:
         amps = amps[...,np.newaxis]
