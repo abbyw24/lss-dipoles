@@ -47,7 +47,7 @@ def generate_mocks_from_cases():
 
     for case_dict in case_dicts:
         
-        tag_case = f"_case{case_dict['Cell_mode']}-{case_dict['selfunc']}-{case_dict['dipole_amp']}"
+        tag_case = f"_case{case_dict['Cell_mode']}-{case_dict['selfunc_mode']}-{case_dict['dipole_amp']}"
         payload = get_payload(case_dict) 
 
         for i in range(n_trials_per_case):
@@ -58,7 +58,7 @@ def generate_mocks_from_cases():
             np.save(fn_mock, mock)
 
 
-def generate_mock():
+def generate_mock(payload, trial=0):
     return "i'm a mock!"
 
 

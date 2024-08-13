@@ -21,7 +21,7 @@ def analyze_mocks():
 
     for case_dict in case_dicts:
 
-        tag_case = f"_case{case_dict['Cell_mode']}-{case_dict['selfunc']}-{case_dict['dipole_amp']}"
+        tag_case = f"_case{case_dict['Cell_mode']}-{case_dict['selfunc_mode']}-{case_dict['dipole_amp']}"
 
         for i in range(n_trials_per_case):
 
@@ -48,7 +48,7 @@ def analyze_data():
     np.save(fn_res, result)
 
 
-def analyze(qmap, case):
+def analyze(qmap, case_dict):
     return "i'm an analysis!"
 
 
