@@ -6,25 +6,6 @@ from astropy.coordinates import SkyCoord
 import tools
 
 
-### COORDINATE TRANSFORMATIONS
-
-def xyz_to_thetaphi(xyz):
-    """
-    Given (x,y,z), return (theta,phi) coordinates on the sphere, where phi=LON and theta=LAT.
-    """
-    x, y, z = xyz
-    r = np.linalg.norm(xyz)
-    theta = np.arccos(z/r)
-    phi = np.arctan2(y,x)
-    return theta, phi
-
-def spherical_to_cartesian(r, theta, phi):
-    x = r * np.cos(phi) * np.sin(theta)
-    y = r * np.sin(phi) * np.sin(theta)
-    z = r * np.cos(theta)
-    return np.array([x, y, z])
-
-
 ### DIPOLE CONTRIBUTIONS
 
 def dipole(theta, phi, dipole_x, dipole_y, dipole_z):
@@ -131,7 +112,8 @@ def measure_dipole_in_overdensity_map_Lambda(sample, selfunc=None, fit_zeros=Tru
     idx_masked = np.isnan(map_to_fit)
     map_to_fit[idx_masked] = 0.
     if np.all(selfunc == None):
-        print("selection function not provided; assuming completeness = 1 everywhere")
+        if verbose:
+            print("selection function not provided; assuming completeness = 1 everywhere")
         Cinv = np.ones_like(sample)
     else:
         Cinv = selfunc.copy()
@@ -170,11 +152,11 @@ def cmb_dipole(frame='icrs', amplitude=0.007, return_amps=False):
     """
     cmb_dipdir = SkyCoord(264, 48, unit=u.deg, frame='galactic')
     if frame=='icrs':
-        amps = spherical_to_cartesian(r=amplitude,
+        amps = tools.spherical_to_cartesian(r=amplitude,
                                              theta=np.pi/2-cmb_dipdir.icrs.dec.rad,
                                              phi=cmb_dipdir.icrs.ra.rad)
     elif frame=='galactic':
-        amps = spherical_to_cartesian(r=amplitude,
+        amps = tools.spherical_to_cartesian(r=amplitude,
                                              theta=np.pi/2-cmb_dipdir.b.rad,
                                              phi=cmb_dipdir.l.rad)
     else:
@@ -204,8 +186,8 @@ def get_dipole(amps, frame='icrs', from_alms=False, verbose=False):
         direction of the dipole
     """
     assert len(amps) == 3
-    if from_alms:  # if the amplitudes are output from fitting alms, need to switch the order!!
-        amps = amps[2], amps[0], amps[1]  
+    if from_alms:
+        amps = tools.a1ms_to_dipole_comps(alms)
     amp = np.linalg.norm(amps)
     direction = hp.vec2dir(amps)
     direction = SkyCoord(direction[1], np.pi/2 - direction[0], frame=frame, unit='rad')

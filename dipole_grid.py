@@ -18,7 +18,7 @@ from Secrest.hpx_vs_direction import linreg, omega_to_theta
 from Secrest.get_colors import synthmagAB, get_passband
 from dipole import fit_dipole, get_dipole
 import tools
-from Secrest_dipole import SecrestDipole
+from dipole_object import DipoleObject
 
 
 def main():
@@ -33,7 +33,7 @@ def main():
 
     # instantiate dipole object
     if catalog == 'catwise_agns':
-        d = SecrestDipole(initial_catfn='catwise_agns_master.fits',
+        d = DipoleObject(initial_catfn='catwise_agns_master.fits',
                             catname='catwise_agns',
                             mask_fn='/scratch/aew492/quasars/catalogs/masks/mask_master_hpx_r1.0.fits',
                             mag='w1',
@@ -42,7 +42,7 @@ def main():
                             log=False,
                             load_init=False)
     elif catalog == 'quaia':
-        d = SecrestDipole(initial_catfn='quaia_G20.5.fits',
+        d = DipoleObject(initial_catfn='quaia_G20.5.fits',
                                         catname='quaia',
                                         mask_fn='/scratch/aew492/quasars/catalogs/masks/mask_master_hpx_r1.0.fits',
                                         mag='G',
