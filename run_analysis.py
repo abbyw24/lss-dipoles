@@ -3,7 +3,7 @@ import numpy as np
 from pathlib import Path
 
 import generate_mocks as gm
-
+import dipole
 
 def main():
 
@@ -12,46 +12,45 @@ def main():
 
 def analyze_mocks():
 
-    dir_mocks = '../data/mocks'
-    dir_results = '../results/results_mocks'
+    dir_mocks = './data/mocks'
+    dir_results = './data/results/results_mocks'
     Path.mkdir(Path(dir_results), exist_ok=True, parents=True)
 
     case_dicts = gm.case_set()
-    n_trials_per_case = 12
+    n_trials_per_case = 2
 
     for case_dict in case_dicts:
-
-        tag_case = f"_case{case_dict['Cell_mode']}-{case_dict['selfunc_mode']}-{case_dict['dipole_amp']}"
-
         for i in range(n_trials_per_case):
 
-            fn_mock = f"{dir_mocks}/mock{tag_case}_trial{i}.npy"
+            fn_mock = f"{dir_mocks}/mock{case_dict['tag']}_trial{i}.npy"
+            print(f"analyze_mocks(): reading file {fn_mock}")
             mock = np.load(fn_mock, allow_pickle=True)
 
-            result = analyze(mock, case_dict)
+            Lambdas, comps = analyze(mock, case_dict)
+            result_dict = {
+                "Lambdas" : Lambdas,
+                "dipole_comps" : comps
+            }
+            fn_res = f"{dir_results}/results_mock{case_dict['tag']}_trial{i}.npy"
+            print(f"analyze_mocks(): writing file {fn_res}")
+            np.save(fn_res, result_dict)
 
-            fn_res = f"{dir_results}/results_mock{tag_case}_trial{i}.npy"
-            np.save(fn_res, result)
 
-
-def analyze_data():
-
-    dir_results = '../results/results_data'
-
-    case_dict = {
-        "selfunc_mode": 'fiducial',
-    }
-    qmap = # load data
-    result = analyze(qmap, case_dict)
-
-    fn_res = f"{dir_results}/results_quaia.npy"
-    np.save(fn_res, result)
-
+# def analyze_data():
+#     dir_results = '../results/results_data'
+#     case_dict = {
+#         "selfunc_mode": 'fiducial'
+#     result = analyze(qmap, case_dict)
+#     fn_res = f"{dir_results}/results_quaia.npy"
+#     np.save(fn_res, result)
 
 def analyze(qmap, case_dict):
-    return "i'm an analysis!"
-
-
+    Lambdas = np.geomspace(1e-3, 1e0, 33)
+    comps = np.zeros((len(Lambdas), 3))
+    for i, Lambda in enumerate(Lambdas):
+        comps[i] = dipole.measure_dipole_in_overdensity_map_Lambda(qmap,
+                                                                   selfunc=gm.get_selfunc_map(case_dict['selfunc_mode']), Lambda=Lambda)
+    return Lambdas, comps
 
 if __name__ == "__main__":
     main()
