@@ -28,6 +28,7 @@ def case_set():
             "selfunc_mode": case[1],
             "dipole_amp": case[2]
         }
+        case_dict["tag"] = f"_case-{case_dict['Cell_mode']}-{case_dict['selfunc_mode']}-{case_dict['dipole_amp']:.5f}"
         case_dicts.append(case_dict)
 
     return case_dicts
@@ -36,7 +37,7 @@ def case_set():
 def get_payload(case_dict):
     payload_dict = {
         "Cells": get_cells(case_dict['Cell_mode']), # write this function!
-        "selfunc": get_selfunc(case_dict['selfunc_mode']), # write this function!
+        "selfunc": get_selfunc_map(case_dict['selfunc_mode']), # write this function!
         "dipole_amp": case_dict['dipole_amp']
     }
     return payload_dict
@@ -51,20 +52,36 @@ def generate_mocks_from_cases():
     n_trials_per_case = 12
 
     for case_dict in case_dicts:
-        
-        tag_case = f"_case{case_dict['Cell_mode']}-{case_dict['selfunc_mode']}-{case_dict['dipole_amp']}"
         payload = get_payload(case_dict) 
-
         for i in range(n_trials_per_case):
-
             mock = generate_mock(payload, trial=i) # or do you just want the case here and get payload inside genmock?
-
-            fn_mock = f"{dir_mocks}/mock{tag_case}_trial{i}.npy"
+            fn_mock = f"{dir_mocks}/mock{case_dict['tag']}_trial{i}.npy"
+            print(f"writing file {fn_mock}")
             np.save(fn_mock, mock)
 
 
-def generate_mock(payload, trial=0):
-    return "i'm a mock!"
+def generate_mock(payload, rng=None, trial=0):
+    """
+    Parameters
+    ----------
+    payload : dict
+        Cells, selfunc, and dipole amplitude.
+    rng : numpy random number generator, optional
+    trial : int, optional
+    
+    Bugs/Comments:
+    - Possible nside conflict between magic NSIDE and payload nside.
+    - base_rate is hard-coded.
+    """
+    if rng is None:
+        rng = np.random.default_rng(17)
+    expected_dipole_map = generate_expected_dipole_map(payload['dipole_amp'])
+    sph_harm_amp_dict = get_sph_harm_amp_dict(payload['Cells'], rng)
+    smooth_overdensity_map = generate_smooth_overdensity_map(sph_harm_amp_dict)
+    selfunc_map = payload['selfunc']
+    base_rate = 35.0    # magic
+    mock = generate_map(expected_dipole_map + smooth_overdensity_map, base_rate, selfunc_map, rng)
+    return mock
 
 def generate_expected_dipole_map(dipole_amplitude, nside=NSIDE):
     """
@@ -77,6 +94,17 @@ def generate_expected_dipole_map(dipole_amplitude, nside=NSIDE):
     amps = np.zeros(4)
     amps[1:] = dipole.cmb_dipole(amplitude=dipole_amplitude, return_amps=True)
     return dipole.dipole_map(amps, NSIDE=nside)
+
+def get_cells(cell_str):
+    if cell_str == 'zeros':
+        Cells = np.zeros(8)
+    elif cell_str == 'flat':
+        Cells = np.zeros(8) + 1e-5  # magic
+    elif cell_str == 'datalike':
+        Cells = np.array([0.007, 0.014, 0.021, 0., 0., 0., 0., 0.]) # magic
+    else:
+        raise ValueError("unknown cell_str")
+    return Cells
 
 def get_sph_harm_amp_dict(Cells, rng):
     """
@@ -106,6 +134,17 @@ def generate_smooth_overdensity_map(sph_harm_amp_dict, nside=NSIDE):
             f"incorrect number of coefficients for ell={ell} ({len(alms)}, expected {2 * ell + 1}"
         mock_map += multipole_map(alms)
     return mock_map
+
+def get_selfunc_map(selfunc_str, nside=NSIDE):
+    if selfunc_str == 'ones':
+        selfunc_map = np.ones(hp.nside2npix(nside))
+    elif selfunc_str == 'binary':
+        selfunc_map = np.ones(hp.nside2npix(nside)) # !! placeholder; needs to be replaced with mask from file
+    elif selfunc_str == 'datasf':
+        selfunc_map = np.ones(hp.nside2npix(nside))
+    else:
+        raise ValueError("unknown selfunc_str")
+    return selfunc_map
 
 def generate_map(overdensity_map, base_rate, selfunc_map, rng):
     """
