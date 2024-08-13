@@ -19,6 +19,9 @@ def dipole_map(amps, NSIDE=64):
     """
     Generate a healpix dipole map (equatorial coordinates) given four parameters:
        the monopole plus three dipole amplitudes.
+       
+    Bugs/Comments:
+    - amps is a 4-vector because we suck.
     """
     NPIX = hp.nside2npix(NSIDE)  # number of pixels
     theta, phi = hp.pix2ang(NSIDE, ipix=np.arange(NPIX))  # get (theta,phi) coords of each pixel
