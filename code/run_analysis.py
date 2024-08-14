@@ -20,6 +20,7 @@ def analyze_mocks():
     n_trials_per_case = 2
 
     for case_dict in case_dicts:
+        fns_res = []
         for i in range(n_trials_per_case):
 
             fn_mock = f"{dir_mocks}/mock{case_dict['tag']}_trial{i}.npy"
@@ -31,10 +32,13 @@ def analyze_mocks():
                 "Lambdas" : Lambdas,
                 "dipole_comps" : comps
             }
-            fn_res = f"{dir_results}/results_mock{case_dict['tag']}_trial{i}.npy"
+            fn_res = os.path.join(dir_results, f"lambda_comps_mock{case_dict['tag']}_trial{i}.npy")
             print(f"analyze_mocks(): writing file {fn_res}")
             np.save(fn_res, result_dict)
-
+            fns_res.append(fn_res)
+            
+        # make a plot of the trials in this case
+        
 
 # def analyze_data():
 #     dir_results = '../results/results_data'
