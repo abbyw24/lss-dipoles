@@ -11,8 +11,8 @@ import tools
 
 def main():
 
-    #analyze_mocks()
-    analyze_data()
+    analyze_mocks()
+    #analyze_data()
 
 def analyze_mocks():
     """
@@ -39,7 +39,7 @@ def analyze_mocks():
         pattern = f"{dir_mocks}/*{case_dict['tag']}*.npy"
         print(f"looking for {pattern}")
         fns_mock = glob.glob(pattern)
-        print("going to fuck with", fns_mock)
+        print(f"found {len(fns_mock)} matching files")
         for i, fn_mock in enumerate(fns_mock):
             print(f"analyze_mocks(): reading file {fn_mock}")
             mock = np.load(fn_mock, allow_pickle=True)
@@ -49,7 +49,7 @@ def analyze_mocks():
                 "Lambdas" : Lambdas,
                 "dipole_comps" : comps
             }
-            fn_res = os.path.join(dir_results, f"lambda_comps_mock{case_dict['tag']}_trial{i}.npy")
+            fn_res = os.path.join(dir_results, f"dipole_comps_lambdas_" + fn_mock.split('/')[-1])
             print(f"analyze_mocks(): writing file {fn_res}")
             np.save(fn_res, result_dict)
             fns_res.append(fn_res)
@@ -93,11 +93,9 @@ def analyze_data():
         "Lambdas" : Lambdas,
         "dipole_comps" : comps
     }
-    fn_res = os.path.join(dir_results, f"lambda_comps_{catalog_name}{case_dict['tag']}.npy")
+    fn_res = os.path.join(dir_results, f"dipole_comps_lambdas_{catalog_name}{case_dict['tag']}.npy")
     np.save(fn_res, result_dict)
     print("Saved results to", fn_res)
-
-
 
 def analyze(qmap, case_dict):
     Lambdas = np.geomspace(1e-3, 1e0, 33)
