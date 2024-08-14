@@ -29,7 +29,7 @@ import tools
 def main():
 
     analyze_mocks(overwrite=False)
-    #analyze_data(overwrite=False)
+    analyze_data(overwrite=False)
 
 def analyze_mocks(overwrite=False):
     """
@@ -53,9 +53,7 @@ def analyze_mocks(overwrite=False):
 
     for case_dict in case_dicts:
         pattern = f"{dir_mocks}/*{case_dict['tag']}*.npy"
-        print(f"looking for {pattern}")
         fns_mock = glob.glob(pattern)
-        print(f"found {len(fns_mock)} matching files")
         for i, fn_mock in enumerate(fns_mock):
             fn_res = os.path.join(dir_results, f"dipole_comps_lambdas_" + fn_mock.split('/')[-1])
             if os.path.exists(fn_res) and not overwrite:
@@ -86,14 +84,14 @@ def analyze_data(overwrite=False):
         None
     """
     # quaia settings
-    # catalog_name = 'quaia_G20.0'
-    # fn_cat = '../data/catalogs/quaia/quaia_G20.0.fits'
-    # selfunc_mode = 'quaia_G20.0_orig'
+    catalog_name = 'quaia_G20.0'
+    fn_cat = '../data/catalogs/quaia/quaia_G20.0.fits'
+    selfunc_mode = 'quaia_G20.0_orig'
 
     #catwise settings
-    catalog_name = 'catwise'
-    fn_cat = f'../data/catalogs/catwise_agns/catwise_agns_master.fits'
-    selfunc_mode = 'catwise_zodi'
+    # catalog_name = 'catwise'
+    # fn_cat = f'../data/catalogs/catwise_agns/catwise_agns_master.fits'
+    # selfunc_mode = 'catwise_zodi'
 
     nside = 64  # magic
     dir_results = '../results/results_data'
@@ -104,7 +102,7 @@ def analyze_data(overwrite=False):
         "selfunc_mode": selfunc_mode, #this also multiplies in the mask
         "tag": f"_case-{selfunc_mode}"
     }
-    fn_res = os.path.join(dir_results, f"dipole_comps_lambdas_{case_dict_data['catalog_name']}{case_dict['tag']}.npy")
+    fn_res = os.path.join(dir_results, f"dipole_comps_lambdas_{case_dict['catalog_name']}{case_dict['tag']}.npy")
     if os.path.exists(fn_res) and not overwrite:
         return
     Lambdas, comps = analyze(qmap, case_dict)
