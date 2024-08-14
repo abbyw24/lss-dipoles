@@ -12,8 +12,6 @@ import os
 import healpy as hp
 from healpy.newvisufunc import projview
 
-# from Secrest.hpx_vs_direction import omega_to_theta
-
 """
 HEALPIX FUNCTIONS
 """
@@ -78,9 +76,6 @@ def label_coord(ax, coordsysstr):
             transform=ax.transAxes)
 
 def smooth_map(density_map, verbose=True):
-    """
-    ##BUG: relies on Secrest's omega_to_theta() function, which has been moved to deprecated/
-    """
 
     theta = omega_to_theta(1)  # 1 steradian
 
@@ -149,6 +144,13 @@ def spherical_to_cartesian(r, theta, phi):
     y = r * np.sin(phi) * np.sin(theta)
     z = r * np.cos(theta)
     return np.array([x, y, z])
+
+def omega_to_theta(omega):
+    """
+    Convert solid angle omega in steradians to theta in radians for
+    a cone section of a sphere.
+    """
+    return np.arccos(1 - omega / (2 * np.pi)) * u.rad
 
 """
 DIPOLE-Y THINGS
