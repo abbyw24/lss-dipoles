@@ -1,3 +1,19 @@
+"""
+# generate mocks
+
+## License
+Copyright 2024 The authors.
+This code is released for re-use under the open-source MIT License.
+
+## Authors:
+- **Abby Williams** (Chicago)
+- **David W. Hogg** (NYU)
+- **Kate Storey-Fisher** (DIPC)
+
+## To-do / bugs / projects
+- Get the realistic selection function working.
+"""
+
 import itertools
 import numpy as np
 import healpy as hp
@@ -8,12 +24,10 @@ from multipoles import multipole_map
 
 NSIDE = 64
 
-def main():
-    generate_mocks_from_cases()
-
-
 def generate_mocks_from_cases():
-
+    """
+    main loop
+    """
     dir_mocks = '../data/mocks'
     Path.mkdir(Path(dir_mocks), exist_ok=True, parents=True)
 
@@ -28,17 +42,21 @@ def generate_mocks_from_cases():
             print(f"writing file {fn_mock}")
             np.save(fn_mock, mock)
 
-
 def case_set():
+    """
+    Define cases combinatorially from choices.
 
-    Cell_modes = ['zeros', 'flat']#, 'datalike']
-    selfunc_modes = ['ones', 'binary', 'quaia_G20.0_orig']
+    Returns
+    -------
+    List of dicts; each dict is a description of one case.
+    """
+    Cell_modes = ['flat', 'zeros', ] # 'datalike']
+    selfunc_modes = ['quaia_G20.0_orig', 'ones', 'binary', ]
     #0.0052 is expected for Quaia; 0.0074 for catwise. pulled from a random notebook, go do this properly!
-    dipole_amps = [0.0, 0.0052, 0.0052*2] #magic 
-
-    arrs = [Cell_modes, selfunc_modes, dipole_amps]
-    cases = list(itertools.product(*arrs))
-
+    dipole_amps = [0.0052, 0., 0.0052 * 2] # magic 
+    cases = list(itertools.product(Cell_modes,
+                                   selfunc_modes,
+                                   dipole_amps))
     case_dicts = []
     for case in cases:
         case_dict = {
@@ -48,30 +66,28 @@ def case_set():
         }
         case_dict["tag"] = f"_case-{case_dict['Cell_mode']}-{case_dict['selfunc_mode']}-{case_dict['dipole_amp']:.5f}"
         case_dicts.append(case_dict)
-
     return case_dicts
 
-
 def get_payload(case_dict):
+    """
+    expand case choices into useful variables for data generation.
+    """
     payload_dict = {
         "Cells": get_cells(case_dict['Cell_mode']), # write this function!
         "selfunc": get_selfunc_map(case_dict['selfunc_mode']), # write this function!
         "dipole_amp": case_dict['dipole_amp']
-    }
     return payload_dict
-
 
 def get_cells(cell_str):
     if cell_str == 'zeros':
-        Cells = np.zeros(8)
-    elif cell_str == 'flat':
-        Cells = np.zeros(8) + 1e-5  # magic
-    elif cell_str == 'datalike':
-        Cells = np.array([0.007, 0.014, 0.021, 0., 0., 0., 0., 0.]) # magic
+        Cells = np.array([])
+    elif cell_str == 'flat': # take this out to ell_max = 16 for no reason but hey. # magic
+        Cells = np.zeros(16) + 1e-5  # magic
+#    elif cell_str == 'datalike':
+#        Cells = np.array([0.007, 0.0014, 0.0021, 0., 0., 0., 0., 0.]) # magic
     else:
         raise ValueError("unknown cell_str")
     return Cells
-
 
 def get_selfunc_map(selfunc_str, nside=NSIDE):
     mask_fn = '../data/catalogs/masks/mask_master_hpx_r1.0.fits'
@@ -81,6 +97,8 @@ def get_selfunc_map(selfunc_str, nside=NSIDE):
         selfunc_map = hp.read_map(mask_fn)
     elif selfunc_str == 'quaia_G20.0_orig':
         fn_selfunc_quaia = f'../data/catalogs/quaia/selfuncs/selection_function_NSIDE{nside}_G20.0.fits'
+        if not file_exists(fn_selfunc_quaia): # Change this to something that works.
+            get_quaia_files()
         selfunc_map = hp.read_map(fn_selfunc_quaia)
         mask_map = hp.read_map(mask_fn)
         selfunc_map *= mask_map # TODO check that this is right
@@ -98,7 +116,6 @@ def get_selfunc_map(selfunc_str, nside=NSIDE):
     else:
         raise ValueError("unknown selfunc_str")
     return selfunc_map
-
 
 def generate_mock(payload, rng=None, trial=0):
     """
@@ -123,7 +140,6 @@ def generate_mock(payload, rng=None, trial=0):
     mock = generate_map(expected_dipole_map + smooth_overdensity_map, base_rate, selfunc_map, rng)
     return mock
 
-
 def generate_expected_dipole_map(dipole_amplitude, nside=NSIDE):
     """
     Parameters
@@ -135,7 +151,6 @@ def generate_expected_dipole_map(dipole_amplitude, nside=NSIDE):
     amps = np.zeros(4)
     amps[1:] = dipole.cmb_dipole(amplitude=dipole_amplitude, return_amps=True)
     return dipole.dipole_map(amps, NSIDE=nside)
-
 
 def get_sph_harm_amp_dict(Cells, rng):
     """
@@ -149,7 +164,6 @@ def get_sph_harm_amp_dict(Cells, rng):
     for ell in range(1, len(Cells)+1):
         sph_harm_amp_dict[ell] = np.sqrt(Cells[ell-1]) * rng.normal(size=2 * ell + 1)
     return sph_harm_amp_dict
-
 
 def generate_smooth_overdensity_map(sph_harm_amp_dict, nside=NSIDE):
     """
@@ -166,7 +180,6 @@ def generate_smooth_overdensity_map(sph_harm_amp_dict, nside=NSIDE):
             f"incorrect number of coefficients for ell={ell} ({len(alms)}, expected {2 * ell + 1}"
         mock_map += multipole_map(alms)
     return mock_map
-
 
 def generate_map(overdensity_map, base_rate, selfunc_map, rng):
     """
@@ -187,6 +200,5 @@ def generate_map(overdensity_map, base_rate, selfunc_map, rng):
     """
     return rng.poisson((1. + overdensity_map) * base_rate * selfunc_map)
 
-
 if __name__ == "__main__":
-    main()
+    generate_mocks_from_cases()
