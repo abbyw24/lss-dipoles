@@ -50,7 +50,9 @@ def generate_mocks_from_cases():
             print(f"writing file {fn_mock}")
             np.save(fn_mock, mock)
             fig = plt.figure()
-            hp.mollview(mock, coord=['C','G'], title=trial_name, fig=fig)
+            hp.mollview(dipole.overdensity_map(mock, payload['selfunc']),
+                        coord=['C','G'], title=trial_name, fig=fig,
+                        min=-0.25, max=0.25)
             plt.savefig(f"{fn_mock}.png")
             plt.close(fig)
 
