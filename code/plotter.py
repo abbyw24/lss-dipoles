@@ -1,3 +1,10 @@
+"""
+# make plots of mocks and real data
+
+## BUGS:
+- file names must be synchronized here to `run_analysis.py`
+"""
+
 import glob
 import matplotlib.pyplot as plt
 import numpy as np
@@ -49,7 +56,7 @@ def plot_dipole_comps_vs_lambdas(#fn_comps_data, fns_comps_mocks,
     dir_results_mocks = '../results/results_mocks'
 
     # Load data
-    fn_comps_data = os.path.join(dir_results_data, f"lambda_comps_{case_dict_data['catalog_name']}{case_dict_data['tag']}.npy")
+    fn_comps_data = os.path.join(dir_results_data, f"dipole_comps_lambdas_{case_dict_data['catalog_name']}{case_dict_data['tag']}.npy")
     result_dict = np.load(fn_comps_data, allow_pickle=True).item()
     dipole_comps_data = result_dict['dipole_comps']
     lambdas_data = result_dict['Lambdas']
