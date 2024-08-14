@@ -15,11 +15,13 @@ This code is released for re-use under the open-source MIT License.
 - The `for` loops here should me `map()`.
 - Name synchronization between the analyses on the mocks and the real data (which "deeply upsets" Hogg).
 """
-
-import numpy as np
 import glob
+import matplotlib.pyplot as plt
+import numpy as np
 import os
 from pathlib import Path
+
+import healpy as hp
 
 import generate_mocks as gm
 import dipole
@@ -28,7 +30,7 @@ import tools
 
 def main():
 
-    analyze_mocks(overwrite=False)
+    #analyze_mocks(overwrite=False)
     analyze_data(overwrite=False)
 
 def analyze_mocks(overwrite=False):
@@ -105,6 +107,13 @@ def analyze_data(overwrite=False):
     fn_res = os.path.join(dir_results, f"dipole_comps_lambdas_{case_dict['catalog_name']}{case_dict['tag']}.npy")
     if os.path.exists(fn_res) and not overwrite:
         return
+    
+    fig = plt.figure()
+    hp.mollview(qmap, 
+                coord=['C','G'], title=f"{case_dict['catalog_name']}{case_dict['tag']}", fig=fig)
+    plt.savefig(f"{fn_res[:-4]}.png")
+    plt.close(fig)
+        
     Lambdas, comps = analyze(qmap, case_dict)
     result_dict = {
         "Lambdas" : Lambdas,
