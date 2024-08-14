@@ -75,9 +75,10 @@ def get_payload(case_dict):
     expand case choices into useful variables for data generation.
     """
     payload_dict = {
-        "Cells": get_cells(case_dict['Cell_mode']), # write this function!
-        "selfunc": get_selfunc_map(case_dict['selfunc_mode']), # write this function!
+        "Cells": get_cells(case_dict['Cell_mode']), 
+        "selfunc": get_selfunc_map(case_dict['selfunc_mode']),
         "dipole_amp": case_dict['dipole_amp']
+    }
     return payload_dict
 
 def get_cells(cell_str):
