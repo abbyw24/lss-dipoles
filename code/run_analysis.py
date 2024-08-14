@@ -1,5 +1,7 @@
 import itertools
 import numpy as np
+import glob
+import os
 from pathlib import Path
 
 import generate_mocks as gm
@@ -26,18 +28,19 @@ def analyze_mocks():
     Returns:
         None
     """
-    dir_mocks = './data/mocks'
-    dir_results = './data/results/results_mocks'
+    dir_mocks = '../data/mocks'
+    dir_results = '../data/results/results_mocks'
     Path.mkdir(Path(dir_results), exist_ok=True, parents=True)
 
     case_dicts = gm.case_set()
-    n_trials_per_case = 2
 
     for case_dict in case_dicts:
         fns_res = []
-        for i in range(n_trials_per_case):
-
-            fn_mock = f"{dir_mocks}/mock{case_dict['tag']}_trial{i}.npy"
+        pattern = f"{dir_mocks}/*{case_dict['tag']}*.npy"
+        print(f"looking for {pattern}")
+        fns_mock = glob.glob(pattern)
+        print("going to fuck with", fns_mock)
+        for i, fn_mock in enumerate(fns_mock):
             print(f"analyze_mocks(): reading file {fn_mock}")
             mock = np.load(fn_mock, allow_pickle=True)
 
@@ -86,7 +89,7 @@ def analyze_data():
         "tag": f"_case-{selfunc_mode}"
     }
     result = analyze(qmap, case_dict)
-    fn_res = f"{dir_results}/results_{catalog_name}{case_dict['tag']}.npy"
+    fn_res = os.path.join(dir_results, f"results_{catalog_name}{case_dict['tag']}.npy")
     np.save(fn_res, result)
 
 
