@@ -29,7 +29,6 @@ import tools
 
 
 def main():
-
     #analyze_mocks(overwrite=False)
     analyze_data(overwrite=False)
 
@@ -109,15 +108,20 @@ def analyze_data(overwrite=False):
         "tag": f"_case-{selfunc_mode}"
     }
     fn_res = os.path.join(dir_results, f"dipole_comps_lambdas_{case_dict['catalog_name']}{case_dict['tag']}.npy")
+    
+    fig = plt.figure()
+    hp.mollview(dipole.overdensity_map(qmap, selfunc=gm.get_selfunc_map(selfunc_mode)), 
+                coord=['C','G'], title=f"{case_dict['catalog_name']}{case_dict['tag']}", 
+                min=-0.5, max=0.5,
+                cmap='RdBu',
+                fig=fig)
+    plt.savefig(f"{fn_res[:-4]}.png")
+    print(f"Saved figure to {fn_res[:-4]}.png")
+    plt.close(fig)
+        
     if os.path.exists(fn_res) and not overwrite:
         return
     
-    fig = plt.figure()
-    hp.mollview(qmap, 
-                coord=['C','G'], title=f"{case_dict['catalog_name']}{case_dict['tag']}", fig=fig)
-    plt.savefig(f"{fn_res[:-4]}.png")
-    plt.close(fig)
-        
     Lambdas, comps = analyze(qmap, case_dict)
     result_dict = {
         "Lambdas" : Lambdas,
