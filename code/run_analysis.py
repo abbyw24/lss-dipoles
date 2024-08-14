@@ -11,8 +11,8 @@ import tools
 
 def main():
 
-    #analyze_mocks()
-    analyze_data()
+    analyze_mocks()
+    #analyze_data()
 
 def analyze_mocks():
     """
@@ -29,10 +29,10 @@ def analyze_mocks():
         None
     """
     dir_mocks = '../data/mocks'
-    dir_results = '../data/results/results_mocks'
+    dir_results = '../results/results_mocks'
     Path.mkdir(Path(dir_results), exist_ok=True, parents=True)
 
-    case_dicts = gm.case_set()
+    case_dicts = gm.case_set(set_name='flat_quaia')
 
     for case_dict in case_dicts:
         fns_res = []
@@ -85,6 +85,7 @@ def analyze_data():
     Path.mkdir(Path(dir_results), exist_ok=True, parents=True)
     qmap = tools.load_catalog_as_map(fn_cat, frame='icrs', NSIDE=nside)
     case_dict = {
+        "catalog_name": catalog_name, #maybe we shouldnt need this here...? think about it!
         "selfunc_mode": selfunc_mode, #this also multiplies in the mask
         "tag": f"_case-{selfunc_mode}"
     }
@@ -93,7 +94,7 @@ def analyze_data():
         "Lambdas" : Lambdas,
         "dipole_comps" : comps
     }
-    fn_res = os.path.join(dir_results, f"lambda_comps_{catalog_name}{case_dict['tag']}.npy")
+    fn_res = os.path.join(dir_results, f"lambda_comps_{case_dict_data['catalog_name']}{case_dict['tag']}.npy")
     np.save(fn_res, result_dict)
     print("Saved results to", fn_res)
 

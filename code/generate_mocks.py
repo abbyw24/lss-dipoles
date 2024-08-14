@@ -36,7 +36,7 @@ def generate_mocks_from_cases():
     dir_mocks = '../data/mocks'
     Path.mkdir(Path(dir_mocks), exist_ok=True, parents=True)
 
-    case_dicts = case_set()
+    case_dicts = case_set(set_name='full')
     n_trials_per_case = 12
 
     for case_dict in case_dicts:
@@ -54,7 +54,8 @@ def generate_mocks_from_cases():
             plt.savefig(f"{fn_mock}.png")
             plt.close(fig)
 
-def case_set():
+
+def case_set(set_name='full'):
     """
     Define cases combinatorially from choices.
 
@@ -62,10 +63,15 @@ def case_set():
     -------
     List of dicts; each dict is a description of one case.
     """
-    Cell_modes = ['flat', 'zeros', ] # 'datalike']
-    selfunc_modes = ['quaia_G20.0_orig', 'ones', 'binary', ]
-    #0.0052 is expected for Quaia; 0.0074 for catwise. pulled from a random notebook, go do this properly!
-    dipole_amps = [0.0052, 0., 0.0052 * 2] # magic 
+    if set_name == 'full':
+        Cell_modes = ['flat', 'zeros', ] # 'datalike']
+        selfunc_modes = ['quaia_G20.0_orig', 'ones', 'binary', ]
+        #0.0052 is expected for Quaia; 0.0074 for catwise. pulled from a random notebook, go do this properly!
+        dipole_amps = [0.0052, 0., 0.0052 * 2] # magic 
+    elif set_name == 'flat_quaia':
+        Cell_modes = ['flat'] #
+        selfunc_modes = ['quaia_G20.0_orig']
+        dipole_amps = [0.0052]
     cases = list(itertools.product(Cell_modes,
                                    selfunc_modes,
                                    dipole_amps))
