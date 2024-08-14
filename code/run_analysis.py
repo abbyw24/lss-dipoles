@@ -11,8 +11,8 @@ import tools
 
 def main():
 
-    analyze_mocks()
-    #analyze_data()
+    #analyze_mocks()
+    analyze_data()
 
 def analyze_mocks():
     """
@@ -71,14 +71,14 @@ def analyze_data():
         None
     """
     # quaia settings
-    catalog_name = 'quaia_G20.0'
-    fn_cat = '../data/catalogs/quaia/quaia_G20.0.fits'
-    selfunc_mode = 'quaia_G20.0_orig'
+    # catalog_name = 'quaia_G20.0'
+    # fn_cat = '../data/catalogs/quaia/quaia_G20.0.fits'
+    # selfunc_mode = 'quaia_G20.0_orig'
 
-    # catwise settings
-    # catalog_name = 'catwise'
-    # fn_cat = f'../data/catalogs/catwise_agns/catwise_agns_master.fits'
-    # selfunc_mode = 'catwise_zodi'
+    #catwise settings
+    catalog_name = 'catwise'
+    fn_cat = f'../data/catalogs/catwise_agns/catwise_agns_master.fits'
+    selfunc_mode = 'catwise_zodi'
 
     nside = 64
     dir_results = '../results/results_data'
@@ -88,9 +88,14 @@ def analyze_data():
         "selfunc_mode": selfunc_mode, #this also multiplies in the mask
         "tag": f"_case-{selfunc_mode}"
     }
-    result = analyze(qmap, case_dict)
-    fn_res = os.path.join(dir_results, f"results_{catalog_name}{case_dict['tag']}.npy")
-    np.save(fn_res, result)
+    Lambdas, comps = analyze(qmap, case_dict)
+    result_dict = {
+        "Lambdas" : Lambdas,
+        "dipole_comps" : comps
+    }
+    fn_res = os.path.join(dir_results, f"lambda_comps_{catalog_name}{case_dict['tag']}.npy")
+    np.save(fn_res, result_dict)
+    print("Saved results to", fn_res)
 
 
 
