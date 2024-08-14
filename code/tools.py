@@ -12,7 +12,7 @@ import os
 import healpy as hp
 from healpy.newvisufunc import projview
 
-from Secrest.hpx_vs_direction import omega_to_theta
+# from Secrest.hpx_vs_direction import omega_to_theta
 
 """
 HEALPIX FUNCTIONS
@@ -78,6 +78,9 @@ def label_coord(ax, coordsysstr):
             transform=ax.transAxes)
 
 def smooth_map(density_map, verbose=True):
+    """
+    ##BUG: relies on Secrest's omega_to_theta() function, which has been moved to deprecated/
+    """
 
     theta = omega_to_theta(1)  # 1 steradian
 
