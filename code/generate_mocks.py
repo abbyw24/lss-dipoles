@@ -11,12 +11,15 @@ This code is released for re-use under the open-source MIT License.
 - **Kate Storey-Fisher** (DIPC)
 
 ## To-do / bugs / projects
-- Get the realistic selection function working.
+- Assumes the relevant files exist in the right places.
+- Replace the `for` loop with `map()`.
 """
 
 import itertools
 import numpy as np
+import matplotlib.pyplot as plt
 import healpy as hp
+import fitsio
 from pathlib import Path
 import os
 import urllib.request 
@@ -39,10 +42,17 @@ def generate_mocks_from_cases():
     for case_dict in case_dicts:
         payload = get_payload(case_dict) 
         for i in range(n_trials_per_case):
-            mock = generate_mock(payload, trial=i) 
-            fn_mock = f"{dir_mocks}/mock{case_dict['tag']}_trial{i}.npy"
-            print(f"writing file{fn_mock}")
+            print(f"making hash {hash((case_dict['tag'], i)) % 2**32}")
+            rng = np.random.default_rng(hash((case_dict['tag'], i)) % 2**16)
+            mock = generate_mock(payload, rng, trial=i) 
+            trial_name = f"mock{case_dict['tag']}_trial{i:03d}"
+            fn_mock = os.path.join(dir_mocks, trial_name)
+            print(f"writing file {fn_mock}")
             np.save(fn_mock, mock)
+            fig = plt.figure()
+            hp.mollview(mock, coord=['C','G'], title=trial_name, fig=fig)
+            plt.savefig(f"{fn_mock}.png")
+            plt.close(fig)
 
 def case_set():
     """
@@ -92,59 +102,45 @@ def get_cells(cell_str):
         raise ValueError("unknown cell_str")
     return Cells
 
-def get_quaia_files(fn):
-    quaiadir = "../data/catalogs/quaia"
-    quaiaurl = "https://zenodo.org/blahblahblah"
-    Path.mkdir(Path(quaiadir), exist_ok=True, parents=True)
-    urllib.request.urlretrieve(quaiaurl + "/" + fn, quaiadir + "/" + fn)
-
 def get_selfunc_map(selfunc_str, nside=NSIDE):
     mask_fn = '../data/catalogs/masks/mask_master_hpx_r1.0.fits'
     if selfunc_str == 'ones':
         selfunc_map = np.ones(hp.nside2npix(nside))
     elif selfunc_str == 'binary':
-        selfunc_map = hp.read_map(mask_fn)
+        selfunc_map = fitsio.read(mask_fn) # mask saved in fits, not healpy save convention
     elif selfunc_str == 'quaia_G20.0_orig':
         fn_selfunc_quaia = f'../data/catalogs/quaia/selfuncs/selection_function_NSIDE{nside}_G20.0.fits'
-        if not os.path.exists(fn_selfunc_quaia):
-            get_quaia_files()
         selfunc_map = hp.read_map(fn_selfunc_quaia)
-        mask_map = hp.read_map(mask_fn)
+        mask_map = fitsio.read(mask_fn) # mask saved in fits, not healpy save convention
         selfunc_map *= mask_map # TODO check that this is right
     elif selfunc_str == 'quaia_G20.0_zodi':
         fn_selfunc_quaia = f'../data/catalogs/quaia/selfuncs/selection_function_NSIDE{nside}_G20.0_pluszodis.fits'
-        if not os.path.exists(fn_selfunc_quaia):
-            get_quaia_files()
         selfunc_map = hp.read_map(fn_selfunc_quaia)
-        mask_map = hp.read_map(mask_fn)
+        mask_map = fitsio.read(mask_fn) # mask saved in fits, not healpy save convention
         selfunc_map *= mask_map 
     elif selfunc_str == 'catwise_zodi':
         # note that catwise fiducial selfunc includes z
         fn_selfunc_quaia = f'../data/catalogs/catwise_agns/selfuncs/selection_function_NSIDE{nside}_catwise_pluszodis.fits'
-        if not os.path.exists(fn_selfunc_quaia):
-            get_quaia_files()
         selfunc_map = hp.read_map(fn_selfunc_quaia)
-        mask_map = hp.read_map(mask_fn)
+        mask_map = fitsio.read(mask_fn) # mask saved in fits, not healpy save convention
         selfunc_map *= mask_map
     else:
         raise ValueError("unknown selfunc_str")
     return selfunc_map
 
-def generate_mock(payload, rng=None, trial=0):
+def generate_mock(payload, rng, trial=0):
     """
     Parameters
     ----------
     payload : dict
         Cells, selfunc, and dipole amplitude.
-    rng : numpy random number generator, optional
+    rng : numpy random number generator
     trial : int, optional
     
     Bugs/Comments:
     - Possible nside conflict between magic NSIDE and payload nside.
     - base_rate is hard-coded.
     """
-    if rng is None:
-        rng = np.random.default_rng(17)
     expected_dipole_map = generate_expected_dipole_map(payload['dipole_amp'])
     sph_harm_amp_dict = get_sph_harm_amp_dict(payload['Cells'], rng)
     smooth_overdensity_map = generate_smooth_overdensity_map(sph_harm_amp_dict)
