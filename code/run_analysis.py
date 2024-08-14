@@ -28,8 +28,8 @@ import tools
 
 def main():
 
-    analyze_mocks(overwrite=False)
-    analyze_data(overwrite=False)
+    analyze_mocks(overwrite=True)
+    analyze_data(overwrite=True)
 
 def analyze_mocks(overwrite=False):
     """
@@ -96,7 +96,11 @@ def analyze_data(overwrite=False):
     nside = 64  # magic
     dir_results = '../results/results_data'
     Path.mkdir(Path(dir_results), exist_ok=True, parents=True)
+    # turn the source table into a healpix map (*NO masks or plane cuts yet!)
     qmap = tools.load_catalog_as_map(fn_cat, frame='icrs', NSIDE=nside)
+    # mask the galactic plane
+    gal_plane_mask = tools.get_galactic_plane_mask(blim=30, NSIDE=64, frame='icrs')
+
     case_dict = {
         "catalog_name": catalog_name, #maybe we shouldnt need this here...? think about it!
         "selfunc_mode": selfunc_mode, #this also multiplies in the mask
@@ -115,10 +119,13 @@ def analyze_data(overwrite=False):
 
 def analyze(qmap, case_dict):
     Lambdas = np.geomspace(1e-3, 1e0, 33)
+    selfunc = gm.get_selfunc_map(case_dict['selfunc_mode'])
+    odmap = dipole.overdensity_map(qmap, selfunc)
     comps = np.zeros((len(Lambdas), 3))
     for i, Lambda in enumerate(Lambdas):
-        comps[i] = dipole.measure_dipole_in_overdensity_map_Lambda(qmap,
-                                                                   selfunc=gm.get_selfunc_map(case_dict['selfunc_mode']), Lambda=Lambda)
+        comps[i] = dipole.measure_overdensity_dipole_Lambda(odmap,
+                                                            selfunc=selfunc,
+                                                            Lambda=Lambda)
     return Lambdas, comps
 
 if __name__ == "__main__":
