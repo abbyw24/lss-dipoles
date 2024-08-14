@@ -49,7 +49,7 @@ def analyze_mocks(overwrite=False):
     dir_results = '../results/results_mocks'
     Path.mkdir(Path(dir_results), exist_ok=True, parents=True)
 
-    case_dicts = gm.case_set(set_name='flat_quaia')
+    case_dicts = gm.case_set(set_name='full')
 
     for case_dict in case_dicts:
         pattern = f"{dir_mocks}/*{case_dict['tag']}*.npy"

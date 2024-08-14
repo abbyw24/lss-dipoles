@@ -1,3 +1,4 @@
+import glob
 import matplotlib.pyplot as plt
 import numpy as np
 import os
@@ -21,8 +22,8 @@ def main():
     dir_figs = '../figures/figures_2024-08-14'
     Path.mkdir(Path(dir_figs), exist_ok=True, parents=True)
 
-    #set_name = 'full'
-    set_name = 'flat_quaia'
+    set_name = 'full'
+    #set_name = 'flat_quaia'
     tag_fig = f'_{set_name}'
     catalog_name = 'quaia_G20.0'
     selfunc_mode = 'quaia_G20.0_orig'
@@ -37,7 +38,6 @@ def main():
         fn_fig = f'{dir_figs}/dipole_comps_vs_lambdas{tag_fig}.png'
         plot_dipole_comps_vs_lambdas(case_dict_data, case_dict_mock, 
                                     title=tag_fig[1:], fn_fig=fn_fig)
-        break
 
 
 def plot_dipole_comps_vs_lambdas(#fn_comps_data, fns_comps_mocks, 
@@ -57,10 +57,14 @@ def plot_dipole_comps_vs_lambdas(#fn_comps_data, fns_comps_mocks,
     # Load mock
     lambdas_mocks = []
     dipole_amps_mocks = []
-    n_trials = 12
+    pattern = f"{dir_results_mocks}/*{case_dict_mock['tag']}*.npy"
+    print(f"looking for {pattern}")
+    fn_comps_mock = glob.glob(pattern)
+    n_trials = len(fn_comps_mock)
+
+    # not necessary in order, careful!
     for i in range(n_trials):
-        fn_comps_mock = os.path.join(dir_results_mocks, f"lambda_comps_mock{case_dict_mock['tag']}_trial{i}.npy")
-        result_dict = np.load(fn_comps_mock,  allow_pickle=True).item()
+        result_dict = np.load(fn_comps_mock[i],  allow_pickle=True).item()
         dipole_amps_mock = np.linalg.norm(result_dict['dipole_comps'], axis=-1)
         dipole_amps_mocks.append(dipole_amps_mock)
         lambdas_mocks.append(result_dict['Lambdas'])
@@ -75,11 +79,16 @@ def plot_dipole_comps_vs_lambdas(#fn_comps_data, fns_comps_mocks,
 
     # Plot each mock trial with light red lines
     for i in range(n_trials):        
-        plt.plot(lambdas_mocks[i], dipole_amps_mocks[i], color='lightcoral', linewidth=1)
+        label = None
+        if i == 0:
+            label = label_mock
+        plt.plot(lambdas_mocks[i], dipole_amps_mocks[i], color='lightcoral', linewidth=1,
+                 label=label)
 
     # Plot the mean of the mock data with a dark red line
     dipole_amps_mock_mean = np.mean(dipole_amps_mocks, axis=0)
-    plt.plot(lambdas_mocks[0], dipole_amps_mock_mean, color='darkred', linewidth=3, label=label_mock)
+    plt.plot(lambdas_mocks[0], dipole_amps_mock_mean, color='red', linewidth=3, 
+             label=label_mock+' mean')
 
     # Adding labels and legend
     plt.xscale('log')
