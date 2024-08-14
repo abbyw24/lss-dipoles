@@ -18,6 +18,8 @@ import itertools
 import numpy as np
 import healpy as hp
 from pathlib import Path
+import os
+import urllib.request 
 
 import dipole
 from multipoles import multipole_map
@@ -39,7 +41,7 @@ def generate_mocks_from_cases():
         for i in range(n_trials_per_case):
             mock = generate_mock(payload, trial=i) 
             fn_mock = f"{dir_mocks}/mock{case_dict['tag']}_trial{i}.npy"
-            print(f"writing file {fn_mock}")
+            print(f"writing file{fn_mock}")
             np.save(fn_mock, mock)
 
 def case_set():
@@ -89,6 +91,12 @@ def get_cells(cell_str):
         raise ValueError("unknown cell_str")
     return Cells
 
+def get_quaia_files(fn):
+    quaiadir = "../data/catalogs/quaia"
+    quaiaurl = "https://zenodo.org/blahblahblah"
+    Path.mkdir(Path(quaiadir), exist_ok=True, parents=True)
+    urllib.request.urlretrieve(quaiaurl + "/" + fn, quaiadir + "/" + fn)
+
 def get_selfunc_map(selfunc_str, nside=NSIDE):
     mask_fn = '../data/catalogs/masks/mask_master_hpx_r1.0.fits'
     if selfunc_str == 'ones':
@@ -97,19 +105,23 @@ def get_selfunc_map(selfunc_str, nside=NSIDE):
         selfunc_map = hp.read_map(mask_fn)
     elif selfunc_str == 'quaia_G20.0_orig':
         fn_selfunc_quaia = f'../data/catalogs/quaia/selfuncs/selection_function_NSIDE{nside}_G20.0.fits'
-        if not file_exists(fn_selfunc_quaia): # Change this to something that works.
+        if not os.path.exists(fn_selfunc_quaia):
             get_quaia_files()
         selfunc_map = hp.read_map(fn_selfunc_quaia)
         mask_map = hp.read_map(mask_fn)
         selfunc_map *= mask_map # TODO check that this is right
     elif selfunc_str == 'quaia_G20.0_zodi':
         fn_selfunc_quaia = f'../data/catalogs/quaia/selfuncs/selection_function_NSIDE{nside}_G20.0_pluszodis.fits'
+        if not os.path.exists(fn_selfunc_quaia):
+            get_quaia_files()
         selfunc_map = hp.read_map(fn_selfunc_quaia)
         mask_map = hp.read_map(mask_fn)
         selfunc_map *= mask_map 
     elif selfunc_str == 'catwise_zodi':
         # note that catwise fiducial selfunc includes z
         fn_selfunc_quaia = f'../data/catalogs/catwise_agns/selfuncs/selection_function_NSIDE{nside}_catwise_pluszodis.fits'
+        if not os.path.exists(fn_selfunc_quaia):
+            get_quaia_files()
         selfunc_map = hp.read_map(fn_selfunc_quaia)
         mask_map = hp.read_map(mask_fn)
         selfunc_map *= mask_map
