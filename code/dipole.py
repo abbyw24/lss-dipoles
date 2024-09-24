@@ -93,7 +93,7 @@ def overdensity_map(qmap, selfunc, min_selfunc=0.5):
     odmap[np.logical_not(good)] = np.NaN # Every line of this code is making Hogg die a little.
     return odmap
 
-def measure_overdensity_dipole_Lambda(sample, selfunc=None, fit_zeros=True, Lambda=0.1, verbose=False):
+def measure_overdensity_dipole_Lambda(sample, Lambda, selfunc=None, fit_zeros=True, verbose=False):
     """
     Wrapper for `dipole.fit_dipole()`. The input `sample` should be an overdensity map.
     """
