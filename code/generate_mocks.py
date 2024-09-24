@@ -66,12 +66,12 @@ def case_set(set_name='full'):
     List of dicts; each dict is a description of one case.
     """
     if set_name == 'full':
-        Cell_modes = ['flat', 'zeros', ] # 'datalike']
+        Cell_modes = ['excess', 'zeros', ] # 'datalike']
         selfunc_modes = ['quaia_G20.0_orig', 'ones', 'binary', ]
         #0.0052 is expected for Quaia; 0.0074 for catwise. pulled from a random notebook, go do this properly!
         dipole_amps = [0.0052, 0., 0.0052 * 2] # magic 
-    elif set_name == 'flat_quaia':
-        Cell_modes = ['flat'] #
+    elif set_name == 'excess_quaia':
+        Cell_modes = ['excess'] #
         selfunc_modes = ['quaia_G20.0_orig']
         dipole_amps = [0.0052]
     cases = list(itertools.product(Cell_modes,
@@ -102,7 +102,7 @@ def get_payload(case_dict):
 def get_cells(cell_str):
     if cell_str == 'zeros':
         Cells = np.array([])
-    elif cell_str == 'flat': # take this out to ell_max = 16 for no reason but hey. # magic
+    elif cell_str == 'excess': # take this out to ell_max = 16 for no reason but hey. # magic
         Cells = np.zeros(16) + 1e-5  # magic
 #    elif cell_str == 'datalike':
 #        Cells = np.array([0.007, 0.0014, 0.0021, 0., 0., 0., 0., 0.]) # magic
