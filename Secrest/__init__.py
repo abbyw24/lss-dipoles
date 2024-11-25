@@ -1,3 +1,0 @@
-"""
-INIT to access functions inside this directory...
-"""
