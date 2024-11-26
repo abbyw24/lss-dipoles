@@ -15,7 +15,7 @@ from healpy.newvisufunc import projview
 """
 HEALPIX FUNCTIONS
 """
-def load_catalog_as_map(catalog, frame='icrs', NSIDE=64, dtype=float):
+def load_catalog_as_map(catalog, frame='icrs', nside=64, dtype=float):
     if type(catalog)==str:
         tab = Table.read(catalog, format='fits')
     elif type(catalog)==astropy.table.table.Table:
@@ -32,15 +32,15 @@ def load_catalog_as_map(catalog, frame='icrs', NSIDE=64, dtype=float):
         assert frame=='icrs', "invalid 'frame'"
         lon, lat = tab['ra'], tab['dec']
     # format into healpy map
-    pix_idx = hp.ang2pix(NSIDE, lon, lat, lonlat=True)
-    hpmap = np.bincount(pix_idx, minlength=hp.nside2npix(NSIDE))
+    pix_idx = hp.ang2pix(nside, lon, lat, lonlat=True)
+    hpmap = np.bincount(pix_idx, minlength=hp.nside2npix(nside))
     return hpmap.astype(dtype)
 
-def get_galactic_plane_mask(blim, NSIDE=64, frame='icrs'):
+def get_galactic_plane_mask(blim, nside=64, frame='icrs'):
     """Returns a HEALPix mask (1s and 0s) around the galactic plane given an absolute b (latitude) limit."""
-    lon, lat = hp.pix2ang(NSIDE, np.arange(hp.nside2npix(NSIDE)), lonlat=True)
+    lon, lat = hp.pix2ang(nside, np.arange(hp.nside2npix(nside)), lonlat=True)
     b = SkyCoord(lon * u.deg, lat * u.deg, frame='icrs').galactic.b
-    gal_plane_mask = np.zeros(hp.nside2npix(NSIDE))
+    gal_plane_mask = np.zeros(hp.nside2npix(nside))
     gal_plane_mask[np.abs(b.deg) >= blim] = 1
     return gal_plane_mask
 
@@ -61,10 +61,7 @@ def mollview(map, coord=['C'], graticule=True, graticule_coord=None, graticule_l
         hp.graticule(coord=gratcoord)
 
 def plot_marker(lon, lat, **kwargs):
-    lon = lon.to(u.rad) if isinstance(lon, u.Quantity) else (lon * u.deg).to(u.rad)
-    lat = lat.to(u.rad) if isinstance(lat, u.Quantity) else (lat * u.deg).to(u.rad)
-    theta = Angle((np.pi/2 * u.rad) - lat)
-    phi = Angle(lon)
+    theta, phi = lonlat_to_thetaphi(lon, lat)
     hp.newprojplot(theta, phi.wrap_at(np.pi * u.rad), **kwargs)
 
 def label_coord(ax, coordsysstr):
@@ -152,6 +149,13 @@ def omega_to_theta(omega):
     """
     return np.arccos(1 - omega / (2 * np.pi)) * u.rad
 
+def lonlat_to_thetaphi(lon, lat):
+    lon = lon.to(u.rad) if isinstance(lon, u.Quantity) else (lon * u.deg).to(u.rad)
+    lat = lat.to(u.rad) if isinstance(lat, u.Quantity) else (lat * u.deg).to(u.rad)
+    theta = Angle((np.pi/2 * u.rad) - lat)
+    phi = Angle(lon)
+    return theta, phi
+
 """
 DIPOLE-Y THINGS
 """
@@ -174,3 +178,31 @@ def C1_from_D(D):   # from Gibelyou & Huterer (2012)
 
 def D_from_C1(C1):
     return np.sqrt(C1 * 9 / (4 * np.pi))
+
+"""
+FILE MANAGEMENT
+"""
+def filter_max_mocks(fns, max_mocks=None):
+    """
+    Returns a list of mock files, given a mock `case_dict` and parent directory `dir_mocks`.
+    If `max_mocks` is not `None`, only returns the first `max_mocks` trials that match the
+    case_dict.
+
+    """
+    if max_mocks is not None:
+        fns_to_return = []
+        itrial = 0
+        nmocks = 0
+        while nmocks < max_mocks:
+            matches = [x for x in fns if f'trial{itrial:03d}' in x]
+            if len(matches) == 1:
+                fns_to_return.append(matches[0])
+                nmocks += 1
+            else:
+                assert not matches, f"error: need 1 match but found {len(matches)}"
+            itrial += 1
+        print(f"analyzing the first {len(fns_to_return)}")
+    else:
+        fns_to_return = fns
+
+    return fns_to_return
