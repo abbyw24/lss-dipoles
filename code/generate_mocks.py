@@ -26,27 +26,34 @@ import urllib.request
 
 import dipole
 from multipoles import multipole_map
+from tools import get_galactic_plane_mask
 
 NSIDE = 64
+RESULTDIR = '/scratch/aew492/lss-dipoles_results'
 
 def generate_mocks_from_cases():
     """
     main loop
     """
-    dir_mocks = '../data/mocks'
+    dir_mocks = os.path.join(RESULTDIR, 'data/mocks')
     Path.mkdir(Path(dir_mocks), exist_ok=True, parents=True)
 
-    case_dicts = case_set(set_name='full')
-    n_trials_per_case = 12
+    case_dicts = case_set(set_name='ideal_catwise')
+    n_trials_per_case = 1000 # magic
+
+    overwrite = False
 
     for case_dict in case_dicts:
         payload = get_payload(case_dict) 
         for i in range(n_trials_per_case):
-            print(f"making hash {hash((case_dict['tag'], i)) % 2**32}")
+            # print(f"making hash {hash((case_dict['tag'], i)) % 2**32}")
             rng = np.random.default_rng(hash((case_dict['tag'], i)) % 2**16)
-            mock = generate_mock(payload, rng, trial=i) 
             trial_name = f"mock{case_dict['tag']}_trial{i:03d}"
-            fn_mock = os.path.join(dir_mocks, trial_name)
+            fn_mock = os.path.join(dir_mocks, trial_name+'.npy')
+            if not overwrite and os.path.exists(fn_mock):
+                # print(f"trial {i} already exists at {fn_mock} and overwrite is False")
+                continue
+            mock = generate_mock(payload, rng, trial=i) 
             print(f"writing file {fn_mock}")
             np.save(fn_mock, mock)
             fig = plt.figure()
@@ -64,27 +71,68 @@ def case_set(set_name='full'):
     Returns
     -------
     List of dicts; each dict is a description of one case.
+
+    Bugs/Comments:
+    - base_rates is hard-coded.
     """
+    quaia_base_rate = 33.64 # magic: * calculated from average of (old_base_rate. (=35.) * (data_mean / mock_mean)) where mocks
+                            #           have been generated using old_base_rate (dipole amplitude 0.0052)
+                            #   -> criterion that the mean masked mean quasar density of mocks generated with new_base_rate
+                            #       be within 0.1% discrepancy of mean masked quasar density of the data
+    catwise_base_rate = 72.42 # magic * calculated from old_base_rate = 70.
+    quaia_dipole_amp = 0.0052
+    catwise_dipole_amp = 0.0074
     if set_name == 'full':
         Cell_modes = ['excess', 'zeros', ] # 'datalike']
-        selfunc_modes = ['quaia_G20.0_orig', 'ones', 'binary', ]
+        selfunc_modes = ['quaia_G20.0_orig', 'catwise_zodi', 'ones', 'binary', ]
         #0.0052 is expected for Quaia; 0.0074 for catwise. pulled from a random notebook, go do this properly!
-        dipole_amps = [0.0052, 0., 0.0052 * 2] # magic 
+        dipole_amps = [0.,
+                        quaia_dipole_amp, quaia_dipole_amp * 2,
+                        catwise_dipole_amp, catwise_dipole_amp * 2] # magic 
+        base_rates = [quaia_base_rate, catwise_base_rate]
     elif set_name == 'excess_quaia':
-        Cell_modes = ['excess'] #
+        Cell_modes = ['excess']
         selfunc_modes = ['quaia_G20.0_orig']
-        dipole_amps = [0.0052]
+        dipole_amps = [quaia_dipole_amp]
+        base_rates = [quaia_base_rate]
+    elif set_name == 'excess_catwise':
+        Cell_modes = ['excess']
+        selfunc_modes = ['catwise_zodi']
+        dipole_amps = [catwise_dipole_amp]
+        base_rates = [catwise_base_rate]
+    elif set_name == 'ideal_quaia':
+        Cell_modes = ['zeros']
+        selfunc_modes = ['ones']
+        dipole_amps = [quaia_dipole_amp]
+        base_rates = [quaia_base_rate]
+    elif set_name == 'ideal_catwise':
+        Cell_modes = ['zeros']
+        selfunc_modes = ['binary'] # !! 'binary' instead of 'ones' (the true "ideal" case) to generate mocks matching S21 method
+        dipole_amps = [catwise_dipole_amp]
+        base_rates = [catwise_base_rate]
+    elif set_name == 'full_quaia':
+        Cell_modes = ['excess', 'zeros']
+        selfunc_modes = ['quaia_G20.0_orig', 'ones', 'binary']
+        dipole_amps = [0., quaia_dipole_amp, quaia_dipole_amp * 2]
+        base_rates = [quaia_base_rate]
+    elif set_name == 'full_catwise':
+        Cell_modes = ['excess', 'zeros']
+        selfunc_modes = ['catwise_zodi', 'ones', 'binary']
+        dipole_amps = [0., catwise_dipole_amp, catwise_dipole_amp * 2]
+        base_rates = [catwise_base_rate]
     cases = list(itertools.product(Cell_modes,
                                    selfunc_modes,
-                                   dipole_amps))
+                                   dipole_amps,
+                                   base_rates))
     case_dicts = []
     for case in cases:
         case_dict = {
             "Cell_mode": case[0],
             "selfunc_mode": case[1],
-            "dipole_amp": case[2]
+            "dipole_amp": case[2],
+            "base_rate": case[3]
         }
-        case_dict["tag"] = f"_case-{case_dict['Cell_mode']}-{case_dict['selfunc_mode']}-{case_dict['dipole_amp']:.5f}"
+        case_dict["tag"] = f"_case-{case_dict['Cell_mode']}-{case_dict['selfunc_mode']}-{case_dict['dipole_amp']:.4f}-{case_dict['base_rate']:.3f}"
         case_dicts.append(case_dict)
     return case_dicts
 
@@ -95,7 +143,8 @@ def get_payload(case_dict):
     payload_dict = {
         "Cells": get_cells(case_dict['Cell_mode']), 
         "selfunc": get_selfunc_map(case_dict['selfunc_mode']),
-        "dipole_amp": case_dict['dipole_amp']
+        "dipole_amp": case_dict['dipole_amp'],
+        "base_rate": case_dict['base_rate']
     }
     return payload_dict
 
@@ -103,35 +152,41 @@ def get_cells(cell_str):
     if cell_str == 'zeros':
         Cells = np.array([])
     elif cell_str == 'excess': # take this out to ell_max = 16 for no reason but hey. # magic
-        Cells = np.zeros(16) + 1e-5  # magic
+        Cells = np.zeros(16) + 1e-5  # magic # !! different excess Cell for CatWISE ??
 #    elif cell_str == 'datalike':
 #        Cells = np.array([0.007, 0.0014, 0.0021, 0., 0., 0., 0., 0.]) # magic
     else:
         raise ValueError("unknown cell_str")
     return Cells
 
-def get_selfunc_map(selfunc_str, nside=NSIDE):
-    mask_fn = '../data/catalogs/masks/mask_master_hpx_r1.0.fits'
+def get_selfunc_map(selfunc_str, nside=NSIDE, blim=30):
+    mask_fn = os.path.join(RESULTDIR, 'data/catalogs/masks/mask_master_hpx_r1.0.fits')
+    # galactic plane cut: used in every case except 'ones'
+    gal_plane_mask = get_galactic_plane_mask(blim, nside=NSIDE, frame='icrs') # 1 in unmasked, 0 in masked
     if selfunc_str == 'ones':
         selfunc_map = np.ones(hp.nside2npix(nside))
     elif selfunc_str == 'binary':
         selfunc_map = fitsio.read(mask_fn) # mask saved in fits, not healpy save convention
+        selfunc_map *= gal_plane_mask
     elif selfunc_str == 'quaia_G20.0_orig':
-        fn_selfunc_quaia = f'../data/catalogs/quaia/selfuncs/selection_function_NSIDE{nside}_G20.0.fits'
+        fn_selfunc_quaia = os.path.join(RESULTDIR, f'data/catalogs/quaia/selfuncs/selection_function_NSIDE{nside}_G20.0.fits')
         selfunc_map = hp.read_map(fn_selfunc_quaia)
         mask_map = fitsio.read(mask_fn) # mask saved in fits, not healpy save convention
         selfunc_map *= mask_map # TODO check that this is right
+        selfunc_map *= gal_plane_mask
     elif selfunc_str == 'quaia_G20.0_zodi':
-        fn_selfunc_quaia = f'../data/catalogs/quaia/selfuncs/selection_function_NSIDE{nside}_G20.0_pluszodis.fits'
+        fn_selfunc_quaia = os.path.join(RESULTDIR, f'data/catalogs/quaia/selfuncs/selection_function_NSIDE{nside}_G20.0_pluszodis.fits')
         selfunc_map = hp.read_map(fn_selfunc_quaia)
         mask_map = fitsio.read(mask_fn) # mask saved in fits, not healpy save convention
         selfunc_map *= mask_map 
+        selfunc_map *= gal_plane_mask
     elif selfunc_str == 'catwise_zodi':
         # note that catwise fiducial selfunc includes z
-        fn_selfunc_quaia = f'../data/catalogs/catwise_agns/selfuncs/selection_function_NSIDE{nside}_catwise_pluszodis.fits'
+        fn_selfunc_quaia = os.path.join(RESULTDIR, f'data/catalogs/catwise_agns/selfuncs/selection_function_NSIDE{nside}_catwise_pluszodis.fits')
         selfunc_map = hp.read_map(fn_selfunc_quaia)
         mask_map = fitsio.read(mask_fn) # mask saved in fits, not healpy save convention
         selfunc_map *= mask_map
+        selfunc_map *= gal_plane_mask
     else:
         raise ValueError("unknown selfunc_str")
     return selfunc_map
@@ -147,13 +202,12 @@ def generate_mock(payload, rng, trial=0):
     
     Bugs/Comments:
     - Possible nside conflict between magic NSIDE and payload nside.
-    - base_rate is hard-coded.
     """
     expected_dipole_map = generate_expected_dipole_map(payload['dipole_amp'])
     sph_harm_amp_dict = get_sph_harm_amp_dict(payload['Cells'], rng)
     smooth_overdensity_map = generate_smooth_overdensity_map(sph_harm_amp_dict)
     selfunc_map = payload['selfunc']
-    base_rate = 35.0    # magic
+    base_rate = payload['base_rate']
     mock = generate_map(expected_dipole_map + smooth_overdensity_map, base_rate, selfunc_map, rng)
     return mock
 
