@@ -22,6 +22,8 @@ import healpy as hp
 import fitsio
 from pathlib import Path
 import os
+import time
+import datetime
 import urllib.request 
 
 import dipole
@@ -35,11 +37,12 @@ def generate_mocks_from_cases():
     """
     main loop
     """
-    dir_mocks = os.path.join(RESULTDIR, 'data/mocks')
+    set_name = 'full_quaia'
+    dir_mocks = os.path.join(RESULTDIR, 'data/mocks', set_name)
     Path.mkdir(Path(dir_mocks), exist_ok=True, parents=True)
 
-    case_dicts = case_set(set_name='ideal_catwise')
-    n_trials_per_case = 1000 # magic
+    case_dicts = case_set(set_name=set_name)
+    n_trials_per_case = 12 # magic
 
     overwrite = False
 
@@ -49,7 +52,7 @@ def generate_mocks_from_cases():
             # print(f"making hash {hash((case_dict['tag'], i)) % 2**32}")
             rng = np.random.default_rng(hash((case_dict['tag'], i)) % 2**16)
             trial_name = f"mock{case_dict['tag']}_trial{i:03d}"
-            fn_mock = os.path.join(dir_mocks, trial_name+'.npy')
+            fn_mock = os.path.join(dir_mocks, trial_name)
             if not overwrite and os.path.exists(fn_mock):
                 # print(f"trial {i} already exists at {fn_mock} and overwrite is False")
                 continue
@@ -62,6 +65,31 @@ def generate_mocks_from_cases():
                         min=-0.25, max=0.25)
             plt.savefig(f"{fn_mock}.png")
             plt.close(fig)
+
+def generate_mocks_from_grid():
+
+    set_name = 'grid_quaia'
+
+    dir_mocks = os.path.join(RESULTDIR, 'data/mocks', set_name)
+    Path.mkdir(Path(dir_mocks), exist_ok=True, parents=True)
+
+    case_dicts = grid_case_set(set_name, n_amps=20, n_excess=10)
+
+    n_trials_per_case = 12
+    overwrite = False
+
+    for j, case_dict in enumerate(case_dicts):
+        payload = get_payload(case_dict)
+        for i in range(n_trials_per_case):
+            rng = np.random.default_rng(hash((case_dict['tag'], i)) % 2**16)
+            trial_name = f"mock{case_dict['tag']}_trial{i:03d}"
+            fn_mock = os.path.join(dir_mocks, trial_name)
+            if not overwrite and os.path.exists(fn_mock+'.npy'):
+                print(f"trial {i} already exists at {fn_mock} and overwrite is False", flush=True)
+                continue
+            mock = generate_mock(payload, rng, trial=i) 
+            print(f"{j+1} of {len(case_dicts)}:\twriting file {fn_mock}", flush=True)
+            np.save(fn_mock, mock)
 
 
 def case_set(set_name='full'):
@@ -107,9 +135,24 @@ def case_set(set_name='full'):
         base_rates = [quaia_base_rate]
     elif set_name == 'ideal_catwise':
         Cell_modes = ['zeros']
-        selfunc_modes = ['binary'] # !! 'binary' instead of 'ones' (the true "ideal" case) to generate mocks matching S21 method
+        selfunc_modes = ['ones'] # !! 'binary' instead of 'ones' (the true "ideal" case) to generate mocks matching S21 method
         dipole_amps = [catwise_dipole_amp]
         base_rates = [catwise_base_rate]
+    elif set_name == 'S21_catwise':  # to generate mocks matching S21 method: same as "ideal" except binary mask instead of ones everywhere
+        Cell_modes = ['zeros']
+        selfunc_modes = ['binary']
+        dipole_amps = [catwise_dipole_amp]
+        base_rates = [catwise_base_rate]
+    elif set_name == 'shot_noise_catwise':
+        Cell_modes = ['zeros']
+        selfunc_modes = ['ones']
+        dipole_amps = [0.]
+        base_rates = [catwise_base_rate]
+    elif set_name == 'shot_noise_quaia':
+        Cell_modes = ['zeros']
+        selfunc_modes = ['ones']
+        dipole_amps = [0.]
+        base_rates = [quaia_base_rate]
     elif set_name == 'full_quaia':
         Cell_modes = ['excess', 'zeros']
         selfunc_modes = ['quaia_G20.0_orig', 'ones', 'binary']
@@ -132,27 +175,79 @@ def case_set(set_name='full'):
             "dipole_amp": case[2],
             "base_rate": case[3]
         }
-        case_dict["tag"] = f"_case-{case_dict['Cell_mode']}-{case_dict['selfunc_mode']}-{case_dict['dipole_amp']:.4f}-{case_dict['base_rate']:.3f}"
+        if case_dict['Cell_mode'] == 'excess':
+            case_dict['excess'] = 1e-5
+            case_dict["tag"] = f"_case-{case_dict['Cell_mode']}-{case_dict['excess']:.0e}-{case_dict['selfunc_mode']}-{case_dict['dipole_amp']:.4f}-{case_dict['base_rate']:.3f}"
+        else:
+            case_dict['excess'] = None
+            case_dict["tag"] = f"_case-{case_dict['Cell_mode']}-{case_dict['selfunc_mode']}-{case_dict['dipole_amp']:.4f}-{case_dict['base_rate']:.3f}"
+        case_dicts.append(case_dict)
+
+    return case_dicts
+
+def grid_case_set(set_name, n_amps, n_excess):
+    """
+    Define case payloads combinatorially from a grid of input dipole amplitudes and excess angular power.
+
+    Returns
+    -------
+    List of dicts; each dict is a payload with one combination of dipole amplitude + excess power.
+
+    Bugs/Comments:
+    - repeated code with base_rates and dipole_amps !
+    - base_rates is hard-coded
+    """
+    # copied from case_set()...
+    quaia_dipole_amp = 0.0052
+    catwise_dipole_amp = 0.0074
+
+    if set_name == 'grid_catwise':
+        base_rate = 72.42 # magic: * calculated from average of (old_base_rate. (=70.) * (data_mean / mock_mean)) where mocks
+                            #           have been generated using old_base_rate (dipole amplitude 0.0074)
+                            #   -> criterion that the mean masked mean quasar density of mocks generated with new_base_rate
+                            #       be within 0.1% discrepancy of mean masked quasar density of the data
+        selfunc_mode = 'catwise_zodi'
+        dipole_amps = np.linspace(catwise_dipole_amp * 0.5, catwise_dipole_amp * 3., n_amps)
+        excess_power = np.logspace(-6, -4, n_excess)
+    elif set_name == 'grid_quaia':
+        base_rate = 33.64 # magic * calculated from old_base_rate = 35.
+        selfunc_mode = 'quaia_G20.0_orig'
+        dipole_amps = np.linspace(quaia_dipole_amp * 0.5, quaia_dipole_amp * 3., n_amps)
+        excess_power = np.logspace(-6, -4, n_excess)
+    grid = list(itertools.product(dipole_amps, excess_power))
+
+    case_dicts = []
+    for case in grid:
+        case_dict = {
+            "Cell_mode" : "excess",
+            "dipole_amp" : case[0],
+            "excess" : case[1],
+            "selfunc_mode" : selfunc_mode,
+            "base_rate" : base_rate,
+            "tag" : f"_case-excess-{case[1]:.2e}-{selfunc_mode}-{case[0]:.4f}-{base_rate:.3f}"
+        }
         case_dicts.append(case_dict)
     return case_dicts
+
 
 def get_payload(case_dict):
     """
     expand case choices into useful variables for data generation.
     """
     payload_dict = {
-        "Cells": get_cells(case_dict['Cell_mode']), 
+        "Cells": get_cells(case_dict['Cell_mode'], excess=case_dict['excess']), 
         "selfunc": get_selfunc_map(case_dict['selfunc_mode']),
         "dipole_amp": case_dict['dipole_amp'],
         "base_rate": case_dict['base_rate']
     }
     return payload_dict
 
-def get_cells(cell_str):
+def get_cells(cell_str, excess=1e-5):
     if cell_str == 'zeros':
         Cells = np.array([])
     elif cell_str == 'excess': # take this out to ell_max = 16 for no reason but hey. # magic
-        Cells = np.zeros(16) + 1e-5  # magic # !! different excess Cell for CatWISE ??
+        assert excess is not None
+        Cells = np.zeros(16) + excess  # magic # !! different excess Cell for CatWISE ??
 #    elif cell_str == 'datalike':
 #        Cells = np.array([0.007, 0.0014, 0.0021, 0., 0., 0., 0., 0.]) # magic
     else:
@@ -272,4 +367,7 @@ def generate_map(overdensity_map, base_rate, selfunc_map, rng):
     return rng.poisson((1. + overdensity_map) * base_rate * selfunc_map)
 
 if __name__ == "__main__":
+    s = time.time()
     generate_mocks_from_cases()
+    total_time = time.time() - s
+    print(f"total time: {datetime.timedelta(seconds=total_time)}", flush=True)

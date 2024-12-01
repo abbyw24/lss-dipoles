@@ -185,7 +185,7 @@ class QSOSample():
         """
         Loads the working source table as a healpix map with resolution `NSIDE`.
         """
-        self.datamap = tools.load_catalog_as_map(self.table, NSIDE=self.NSIDE)
+        self.datamap = tools.load_catalog_as_map(self.table, nside=self.NSIDE)
 
     def construct_masked_datamap(self, selfunc=None, min_completeness=0.5, return_map=False):
         """
