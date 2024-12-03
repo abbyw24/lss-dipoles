@@ -39,7 +39,7 @@ def main():
 
     Lambda1, Lambda2 = 1e-2, 1e-1 # magic: corresponds to the Lambdas in run_analysis.py !
 
-    set_name = 'ideal_catwise'
+    set_name = 'excess_catwise'
     tag_fig = f'_{set_name}'
     catalog_name = 'catwise' #'quaia_G20.0'
     selfunc_mode = 'catwise_zodi' #'quaia_G20.0_orig'
@@ -57,9 +57,9 @@ def main():
         plot_dipole_comps_vs_Lambdas(case_dict_data, case_dict_mock, 
                                     title=tag_fig[1:], fn_fig=fn_fig)
 
-        # fn_fig = f'{dir_figs}/Cells_Lambdas-{Lambda1:.1e}-{Lambda2:.1e}{tag_fig}.png'
-        # plot_Cells(case_dict_data, case_dict_mock, Lambda1, Lambda2,
-        #             title=tag_fig[1:], fn_fig=fn_fig)
+        fn_fig = f'{dir_figs}/Cells_Lambdas-{Lambda1:.1e}-{Lambda2:.1e}{tag_fig}.png'
+        plot_Cells(case_dict_data, case_dict_mock, Lambda1, Lambda2,
+                    title=tag_fig[1:], fn_fig=fn_fig)
 
 
 def plot_dipole_comps_vs_Lambdas(#fn_comps_data, fns_comps_mocks, 

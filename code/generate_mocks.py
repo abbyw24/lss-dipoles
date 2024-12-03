@@ -37,7 +37,7 @@ def generate_mocks_from_cases():
     """
     main loop
     """
-    set_name = 'full_quaia'
+    set_name = 'excess'
     dir_mocks = os.path.join(RESULTDIR, 'data/mocks', set_name)
     Path.mkdir(Path(dir_mocks), exist_ok=True, parents=True)
 
@@ -53,7 +53,7 @@ def generate_mocks_from_cases():
             rng = np.random.default_rng(hash((case_dict['tag'], i)) % 2**16)
             trial_name = f"mock{case_dict['tag']}_trial{i:03d}"
             fn_mock = os.path.join(dir_mocks, trial_name)
-            if not overwrite and os.path.exists(fn_mock):
+            if not overwrite and os.path.exists(f"{fn_mock}.npy"):
                 # print(f"trial {i} already exists at {fn_mock} and overwrite is False")
                 continue
             mock = generate_mock(payload, rng, trial=i) 
@@ -138,11 +138,26 @@ def case_set(set_name='full'):
         selfunc_modes = ['ones'] # !! 'binary' instead of 'ones' (the true "ideal" case) to generate mocks matching S21 method
         dipole_amps = [catwise_dipole_amp]
         base_rates = [catwise_base_rate]
-    elif set_name == 'S21_catwise':  # to generate mocks matching S21 method: same as "ideal" except binary mask instead of ones everywhere
+    elif set_name == 'binary_catwise':  # to generate mocks matching S21 method: same as "ideal" except binary mask instead of ones everywhere
         Cell_modes = ['zeros']
         selfunc_modes = ['binary']
         dipole_amps = [catwise_dipole_amp]
         base_rates = [catwise_base_rate]
+    elif set_name == 'binary_quaia':  # to generate mocks matching S21 method: same as "ideal" except binary mask instead of ones everywhere
+        Cell_modes = ['zeros']
+        selfunc_modes = ['binary']
+        dipole_amps = [quaia_dipole_amp]
+        base_rates = [quaia_base_rate]
+    elif set_name == 'excess_catwise_ones':
+        Cell_modes = ['excess']
+        selfunc_modes = ['ones']
+        dipole_amps = [0., catwise_dipole_amp]
+        base_rates = [catwise_base_rate]
+    elif set_name == 'excess_quaia_ones':
+        Cell_modes = ['excess']
+        selfunc_modes = ['ones']
+        dipole_amps = [0., quaia_dipole_amp]
+        base_rates = [quaia_base_rate]
     elif set_name == 'shot_noise_catwise':
         Cell_modes = ['zeros']
         selfunc_modes = ['ones']
@@ -153,6 +168,16 @@ def case_set(set_name='full'):
         selfunc_modes = ['ones']
         dipole_amps = [0.]
         base_rates = [quaia_base_rate]
+    elif set_name == 'excess':
+        Cell_modes = ['excess']
+        selfunc_modes = ['ones', 'binary']
+        dipole_amps = [0.]
+        base_rates = [0.]
+    elif set_name == 'zeros':
+        Cell_modes = ['zeros']
+        selfunc_modes = ['ones']
+        dipole_amps = [0.]
+        base_rates = [0.]
     elif set_name == 'full_quaia':
         Cell_modes = ['excess', 'zeros']
         selfunc_modes = ['quaia_G20.0_orig', 'ones', 'binary']
@@ -209,7 +234,8 @@ def grid_case_set(set_name, n_amps, n_excess):
         selfunc_mode = 'catwise_zodi'
         dipole_amps = np.linspace(catwise_dipole_amp * 0.5, catwise_dipole_amp * 3., n_amps)
         excess_power = np.logspace(-6, -4, n_excess)
-    elif set_name == 'grid_quaia':
+    else:
+        assert set_name == 'grid_quaia', "set_name must be either 'grid_catwise' or 'grid_quaia"
         base_rate = 33.64 # magic * calculated from old_base_rate = 35.
         selfunc_mode = 'quaia_G20.0_orig'
         dipole_amps = np.linspace(quaia_dipole_amp * 0.5, quaia_dipole_amp * 3., n_amps)
@@ -363,8 +389,13 @@ def generate_map(overdensity_map, base_rate, selfunc_map, rng):
     --------------
     - This function will only operate if there's a global variable called NSIDE.
     - If overdensity_map < -1 anywhere, this code will fail.
+    - If base_rate == 0, the map is 0 everywhere.
     """
-    return rng.poisson((1. + overdensity_map) * base_rate * selfunc_map)
+    if base_rate == 0:
+        return (1. + overdensity_map) * selfunc_map
+    else:
+        assert base_rate > 0, "base_rate cannot be negative"
+        return rng.poisson((1. + overdensity_map) * base_rate * selfunc_map)
 
 if __name__ == "__main__":
     s = time.time()
