@@ -32,7 +32,8 @@ RESULTDIR = '/scratch/aew492/lss-dipoles_results'
 
 def main():
 
-    set_name = 'shot_noise_catwise'
+    #set_name = 'shot_noise_catwise'
+    set_name = 'grid_quaia'
 
     dir_mocks = os.path.join(RESULTDIR, 'data/mocks', set_name)
     dir_results = os.path.join(RESULTDIR, 'results/results_mocks', set_name)
