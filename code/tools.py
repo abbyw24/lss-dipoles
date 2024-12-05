@@ -201,6 +201,8 @@ def filter_max_mocks(fns, max_mocks=None):
             else:
                 assert not matches, f"error: need 1 match but found {len(matches)}"
             itrial += 1
+            if itrial > len(fns):
+                break
     else:
         fns_to_return = fns
 
