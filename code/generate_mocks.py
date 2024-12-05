@@ -37,11 +37,11 @@ def generate_mocks_from_cases():
     """
     main loop
     """
-    set_name = 'excess'
+    set_name = 'excess_quaia'
     dir_mocks = os.path.join(RESULTDIR, 'data/mocks', set_name)
     Path.mkdir(Path(dir_mocks), exist_ok=True, parents=True)
 
-    case_dicts = case_set(set_name=set_name)
+    case_dicts = case_set(set_name=set_name, excess=1e-4)
     n_trials_per_case = 12 # magic
 
     overwrite = False
@@ -68,7 +68,7 @@ def generate_mocks_from_cases():
 
 def generate_mocks_from_grid():
 
-    set_name = 'grid_quaia'
+    set_name = 'grid_catwise'
 
     dir_mocks = os.path.join(RESULTDIR, 'data/mocks', set_name)
     Path.mkdir(Path(dir_mocks), exist_ok=True, parents=True)
@@ -92,9 +92,16 @@ def generate_mocks_from_grid():
             np.save(fn_mock, mock)
 
 
-def case_set(set_name='full'):
+def case_set(set_name='full', excess=1e-5):
     """
     Define cases combinatorially from choices.
+
+    Parameters
+    ----------
+    set_name : str, optional
+
+    excess : float, optional
+        Amount of excess power to add (flat in Cell space) when the case includes excess power.
 
     Returns
     -------
@@ -120,54 +127,44 @@ def case_set(set_name='full'):
         base_rates = [quaia_base_rate, catwise_base_rate]
     elif set_name == 'excess_quaia':
         Cell_modes = ['excess']
-        selfunc_modes = ['quaia_G20.0_orig']
-        dipole_amps = [quaia_dipole_amp]
+        selfunc_modes = ['quaia_G20.0_orig'] # 'ones', 'binary', 
+        dipole_amps = [quaia_dipole_amp] # 0., 
         base_rates = [quaia_base_rate]
     elif set_name == 'excess_catwise':
         Cell_modes = ['excess']
-        selfunc_modes = ['catwise_zodi']
-        dipole_amps = [catwise_dipole_amp]
+        selfunc_modes = ['catwise_zodi'] # 'ones', 'binary', 
+        dipole_amps = [catwise_dipole_amp] # 0., 
         base_rates = [catwise_base_rate]
     elif set_name == 'ideal_quaia':
         Cell_modes = ['zeros']
         selfunc_modes = ['ones']
         dipole_amps = [quaia_dipole_amp]
-        base_rates = [quaia_base_rate]
+        base_rates = [0., quaia_base_rate]
     elif set_name == 'ideal_catwise':
         Cell_modes = ['zeros']
         selfunc_modes = ['ones'] # !! 'binary' instead of 'ones' (the true "ideal" case) to generate mocks matching S21 method
         dipole_amps = [catwise_dipole_amp]
-        base_rates = [catwise_base_rate]
-    elif set_name == 'binary_catwise':  # to generate mocks matching S21 method: same as "ideal" except binary mask instead of ones everywhere
-        Cell_modes = ['zeros']
-        selfunc_modes = ['binary']
-        dipole_amps = [catwise_dipole_amp]
-        base_rates = [catwise_base_rate]
+        base_rates = [0., catwise_base_rate]
     elif set_name == 'binary_quaia':  # to generate mocks matching S21 method: same as "ideal" except binary mask instead of ones everywhere
         Cell_modes = ['zeros']
         selfunc_modes = ['binary']
         dipole_amps = [quaia_dipole_amp]
         base_rates = [quaia_base_rate]
-    elif set_name == 'excess_catwise_ones':
-        Cell_modes = ['excess']
-        selfunc_modes = ['ones']
-        dipole_amps = [0., catwise_dipole_amp]
-        base_rates = [catwise_base_rate]
-    elif set_name == 'excess_quaia_ones':
-        Cell_modes = ['excess']
-        selfunc_modes = ['ones']
-        dipole_amps = [0., quaia_dipole_amp]
+    elif set_name == 'binary_catwise':  # to generate mocks matching S21 method: same as "ideal" except binary mask instead of ones everywhere
+        Cell_modes = ['zeros']
+        selfunc_modes = ['binary']
+        dipole_amps = [catwise_dipole_amp]
+        base_rates = [0., catwise_base_rate]
+    elif set_name == 'shot_noise_quaia':
+        Cell_modes = ['zeros']
+        selfunc_modes = ['ones', 'binary']
+        dipole_amps = [0.]
         base_rates = [quaia_base_rate]
     elif set_name == 'shot_noise_catwise':
         Cell_modes = ['zeros']
-        selfunc_modes = ['ones']
+        selfunc_modes = ['ones'] #, 'binary']
         dipole_amps = [0.]
         base_rates = [catwise_base_rate]
-    elif set_name == 'shot_noise_quaia':
-        Cell_modes = ['zeros']
-        selfunc_modes = ['ones']
-        dipole_amps = [0.]
-        base_rates = [quaia_base_rate]
     elif set_name == 'excess':
         Cell_modes = ['excess']
         selfunc_modes = ['ones', 'binary']
@@ -201,7 +198,8 @@ def case_set(set_name='full'):
             "base_rate": case[3]
         }
         if case_dict['Cell_mode'] == 'excess':
-            case_dict['excess'] = 1e-5
+            assert (excess > 0) and (excess < 1), "excess power must be between 0 and 1"
+            case_dict['excess'] = excess
             case_dict["tag"] = f"_case-{case_dict['Cell_mode']}-{case_dict['excess']:.0e}-{case_dict['selfunc_mode']}-{case_dict['dipole_amp']:.4f}-{case_dict['base_rate']:.3f}"
         else:
             case_dict['excess'] = None
