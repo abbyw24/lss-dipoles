@@ -32,18 +32,17 @@ RESULTDIR = '/scratch/aew492/lss-dipoles_results'
 
 def main():
 
-    #set_name = 'shot_noise_catwise'
-    set_name = 'grid_quaia'
+    set_name = 'binary_quaia'
 
     dir_mocks = os.path.join(RESULTDIR, 'data/mocks', set_name)
     dir_results = os.path.join(RESULTDIR, 'results/results_mocks', set_name)
     Path.mkdir(Path(dir_results), exist_ok=True, parents=True)
 
     # case_dicts = gm.grid_case_set(set_name=set_name, n_amps=20, n_excess=10)
-    case_dicts = gm.case_set(set_name, excess=1e-7)
-    print(f"got {len(case_dicts)} cases", flush=True)
+    case_dicts = gm.case_set(set_name, excess=1e-5)
+    print(f"got {len(case_dicts)} cases", flush=True)   
 
-    analyze_mocks(case_dicts, dir_mocks, dir_results, Lambdas=[1e-4],
+    analyze_mocks(case_dicts, dir_mocks, dir_results, Lambdas=[0., 1e-3, 1e-2],
                      overwrite=False, compute_Cells=True, max_mocks_for_Cells=12)
     # analyze_data(overwrite=False)
 
@@ -101,9 +100,9 @@ def analyze_mocks(case_dicts, dir_mocks, dir_results, Lambdas=[0.],
 
             fn_res = os.path.join(dir_results, f"dipole_comps_lambdas_" + fn_mock.split('/')[-1])
             if not os.path.exists(fn_res) or overwrite:
-                Lambdas, comps = analyze_dipole(mock, case_dict)
+                Lambda_grid, comps = analyze_dipole(mock, case_dict)
                 result_dict = {
-                    "Lambdas" : Lambdas,
+                    "Lambdas" : Lambda_grid,
                     "dipole_comps" : comps
                 }
                 np.save(fn_res, result_dict)
@@ -166,8 +165,6 @@ def analyze_data(overwrite=False):
 
         # turn the source table into a healpix map (*NO masks or plane cuts yet!)
         qmap = tools.load_catalog_as_map(fn_cat, frame='icrs', nside=nside)
-        # mask the galactic plane
-        gal_plane_mask = tools.get_galactic_plane_mask(blim=30, nside=64, frame='icrs')
 
         case_dict = {
             "catalog_name": catalog_name, #maybe we shouldnt need this here...? think about it!
