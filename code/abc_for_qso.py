@@ -20,15 +20,15 @@ def main():
 
     """ MAIN INPUTS """
 
-    catname = 'catwise'
+    catname = 'quaia'
 
     distance_nside = 1
     nside = 64
     blim = 30
 
-    population_size = 50
-    minimum_epsilon = 100
-    max_nr_populations = 8
+    population_size = 100
+    minimum_epsilon = 1000
+    max_nr_populations = 14
 
     # where to store results
     save_dir = os.path.join(RESULTDIR, 'results/ABC',
@@ -42,15 +42,17 @@ def main():
         selfunc_fn = os.path.join(RESULTDIR, f'data/catalogs/quaia/selfuncs/selection_function_NSIDE64_G20.0.fits')
         expected_dipole_amp = 0.0052
         dipole_amp_bounds = (0., 3 * expected_dipole_amp) # first is lower bound, second entry is WIDTH (not upper bound)
-        log_excess_bounds = (-6, 3)
+        log_excess_bounds = (-7, 4)
         if nside == 1:
             base_rate_bounds = (1.35e5, 1.5e4)  # note much higher base rate since healpixels are much bigger; depends on nside
         elif nside == 2:
             base_rate_bounds = (3.4e4, 3e3)
         elif nside == 4:
             base_rate_bounds = (8e3, 1e3) #(8.6e3, 5e2)
+        elif nside == 16:
+            base_rate_bounds = (510., 40.)
         elif nside == 64:
-            base_rate_bounds = (30., 35.)
+            base_rate_bounds = (32., 3.) # previously (30,6); peaks around ~33.6 for distance_nside = 1
         else:
             assert False, f"need to add base rate bounds for this nside"
     else:
@@ -59,27 +61,29 @@ def main():
         selfunc_fn = os.path.join(RESULTDIR, f'data/catalogs/catwise_agns/selfuncs/selection_function_NSIDE64_catwise_pluszodis.fits')
         expected_dipole_amp = 0.0074
         dipole_amp_bounds = (0., 3 * expected_dipole_amp)
-        log_excess_bounds = (-6, 3)
+        log_excess_bounds = (-7, 4)
         if nside == 1:
             base_rate_bounds = (3e5, 2e4)
         elif nside == 2:
             base_rate_bounds = (7.5e4, 5e3)
         elif nside == 4:
             base_rate_bounds = (1.8e4, 2e3) #(1.85e4, 1.5e3) before mask fix
+        elif nside == 16:
+            base_rate_bounds = (1150., 100.)
         elif nside == 64:
-            base_rate_bounds = (65., 75.)
+            base_rate_bounds = (71., 3.)
         else:
             assert False, f"need to add base rate bounds for this nside"
 
     """ DATA & SELECTION FUNCTION """
     # selection function: this isn't applied to the data but used to generate the mock skies
     small_masks = fitsio.read(os.path.join(RESULTDIR, f'data/catalogs/masks/mask_master_hpx_r1.0.fits'))
-    selfunc = hp.read_map(selfunc_fn) * small_masks * tools.get_galactic_plane_mask(blim, nside=64, frame='icrs')
+    selfunc = hp.read_map(selfunc_fn) * small_masks * tools.get_galactic_plane_mask(blim, nside=nside, frame='icrs')
 
     # load catalog
-    qmap_raw = tools.load_catalog_as_map(fn_cat, frame='icrs', nside=64)
+    qmap_raw = tools.load_catalog_as_map(fn_cat, frame='icrs', nside=nside)
     # add galactic plane mask
-    qmap = qmap_raw * tools.get_galactic_plane_mask(blim, nside=64, frame='icrs') * small_masks
+    qmap = qmap_raw * tools.get_galactic_plane_mask(blim, nside=nside, frame='icrs') * small_masks
 
     """ PRIOR """
     prior = pyabc.Distribution(dipole_amp = pyabc.RV("uniform", *dipole_amp_bounds),
