@@ -27,9 +27,13 @@ def main():
     nside = 64
     blim = 30
 
-    population_size = 100
+    population_size = 500
     minimum_epsilon = 1e-10
-    max_nr_populations = 10
+    ngens = 20
+
+    ell_max = 8
+
+    continue_run = True     # continue a run where we left off, if one exists but stopped (probably due to time limit issues?)
 
     # catalog-specific inputs
     if catname == 'quaia':
@@ -52,7 +56,7 @@ def main():
 
     # where to store results
     save_dir = os.path.join(RESULTDIR, 'results/ABC',
-                            f'{catname}_dipole_excess_nside{distance_nside}_{population_size}mocks_{max_nr_populations}iters_base-rate{base_rate:.4f}')
+                            f'{catname}_dipole_excess_nside{distance_nside}_{population_size}mocks_{ngens}iters_base-rate-{base_rate:.4f}')
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
 
@@ -95,7 +99,7 @@ def main():
     # need these wrapper functions to match required format for pyabc ; selfunc and nside defined above
     def model_wrapper(parameters):
         
-        return model(parameters, selfunc, base_rate, cmb_dipdir, theta, phi)
+        return model(parameters, selfunc, base_rate, cmb_dipdir, theta, phi, ell_max=ell_max)
 
     def distance_wrapper(x, x0):
 
@@ -107,17 +111,35 @@ def main():
 
     # store the history at this tempfile
     db_path = os.path.join(tempfile.gettempdir(), save_dir, f'history.db')
-    abc.new("sqlite:///" + db_path, {"data": observation})
+    if os.path.exists(db_path) and continue_run == True:
+        print(f"continuing run found at {db_path}")
+        # load old history to get info
+        history = pyabc.History("sqlite:///" + db_path)
+        abc.load("sqlite:///" + db_path, history.id)  # second argument is the run ID which is always 1 unless I do something fancy
+        # max_nr_populations is the number we actually want _minus_ how many have already run
+        max_nr_populations = ngens - history.max_t
+    else:
+        print(f"starting a new run for this case")
+        abc.new("sqlite:///" + db_path, {"data": observation})
+        max_nr_populations = ngens
 
     # start the sampling!
-    history = abc.run(minimum_epsilon=minimum_epsilon, max_nr_populations=max_nr_populations)
+    if max_nr_populations > 0:
+        history = abc.run(minimum_epsilon=minimum_epsilon, max_nr_populations=max_nr_populations)
 
-
-    # save
-    prior = dict(dipole_amp=dipole_amp_bounds, log_excess=log_excess_bounds)
-    res = dict(history=history, prior=prior, observation=observation)
-    np.save(os.path.join(save_dir, f'history.npy'), res)
-
+    # save dictionary of results
+    #   (and save some of the key history info since I've run into weird bugs trying to load the history object)
+    res = {
+        'history' : history,
+        'prior' : dict(dipole_amp=dipole_amp_bounds, log_excess=log_excess_bounds),
+        'observation' : observation,
+        'qmap' : qmap_masked,
+        'posterior' : history.get_distribution(),
+        'ell_max' : ell_max,
+        'max_t' : history.max_t,
+        'old_posteriors' : [history.get_distribution(t=t) for t in range(history.max_t + 1)]
+    }
+    np.save(os.path.join(save_dir, f'results.npy'), res)
     print(f"history saved at {save_dir}", flush=True)
 
     print(f"saving accepted mocks from final generation...", flush=True)
@@ -160,7 +182,7 @@ def distance(x, x0, nside):
                                                             # power = -2 preserves the sum of the map => preserves total number of quasars
 
 
-def model(parameters, selfunc, base_rate, dipdir, theta, phi):
+def model(parameters, selfunc, base_rate, dipdir, theta, phi, ell_max=8, poisson=True):
     """
     Generates a healpix density map with dipole in fixed CMB dipole direction and excess angular power.
     Uses fiducial selection function (Quaia + galactic plane mask + smaller masks from S21).
@@ -183,39 +205,31 @@ def model(parameters, selfunc, base_rate, dipdir, theta, phi):
     """
 
     nside = hp.npix2nside(len(selfunc))
-    
-    rng = np.random.default_rng(seed=None) # should I put a seed in here??
 
     # expected dipole map
     # amps = np.zeros(4)
     amps = tools.spherical_to_cartesian(r=parameters["dipole_amp"],
                                         theta=np.pi/2-dipdir.icrs.dec.rad,
                                         phi=dipdir.icrs.ra.rad)
-    # amps[1:] = dipole.cmb_dipole(amplitude=parameters["dipole_amp"], return_amps=True)
-    # expected_dipole_map = dipole.dipole_map(amps, NSIDE=nside)
     expected_dipole_map = dipole.dipole(theta, phi, *amps)
 
     # add Cells
     # Cells: flat, determined by input log_excess
-    Cells = np.zeros(8) + 10**parameters["log_excess"]
-    # # draw alms from a Gaussian
-    # sph_harm_amp_dict = {}
-    # for ell in range(1, len(Cells)+1):
-    #     sph_harm_amp_dict[ell] = np.sqrt(Cells[ell-1]) * rng.normal(size=2 * ell + 1)
-    # # then make map from the alms
-    # excess_map = np.zeros((hp.nside2npix(nside)))
-    # for ell in sph_harm_amp_dict.keys():
-    #     alms = sph_harm_amp_dict[ell]
-    #     assert len(alms) == 2 * ell + 1, \
-    #         f"incorrect number of coefficients for ell={ell} ({len(alms)}, expected {2 * ell + 1}"
-    #     excess_map += multipoles.multipole_map(alms, NSIDE=nside)
-    excess_map = hp.sphtfunc.synfast(Cells, nside)
+    if parameters["log_excess"] < -20:  # magic, kind of hacky but I want a way to have literally zero excess power
+        excess_map = np.zeros_like(expected_dipole_map)
+    else:
+        Cells = np.zeros(ell_max)
+        Cells[1:] += 10**parameters["log_excess"]   # because we don't want excess power in the monopole
+        excess_map = hp.sphtfunc.synfast(Cells, nside)
 
     # smooth overdensity map
     smooth_overdensity_map = expected_dipole_map + excess_map
 
     # poisson sample, including the base rate and the selfunc map
-    number_map = rng.poisson((1. + smooth_overdensity_map) * base_rate * selfunc)
+    number_map = (1. + smooth_overdensity_map) * base_rate * selfunc
+    if poisson == True:
+        rng = np.random.default_rng(seed=None) # should I put a seed in here??
+        number_map = rng.poisson(number_map)
 
     return { "data" : number_map }
 
