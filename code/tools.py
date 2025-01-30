@@ -11,6 +11,9 @@ import astropy.units as u
 import os
 import healpy as hp
 from healpy.newvisufunc import projview
+import pyabc
+import pandas as pd
+
 
 """
 HEALPIX FUNCTIONS
@@ -72,9 +75,9 @@ def label_coord(ax, coordsysstr):
             fontweight="bold",
             transform=ax.transAxes)
 
-def smooth_map(density_map, verbose=True):
+def smooth_map(density_map, sr=1, verbose=True):
 
-    theta = omega_to_theta(1)  # 1 steradian
+    theta = omega_to_theta(sr)  # convert steradians to angle on the sky
 
     NPIX = len(density_map)
     lon, lat = hp.pix2ang(hp.npix2nside(NPIX), np.arange(NPIX), lonlat=True)
@@ -207,3 +210,109 @@ def filter_max_mocks(fns, max_mocks=None):
         fns_to_return = fns
 
     return fns_to_return
+
+
+"""
+ABC
+"""
+def get_kde_1d(history, prior, parameter):
+
+    df, w = history if type(history) == list else history.get_distribution()
+    return pyabc.visualization.kde.kde_1d(pd.concat((df[parameter],), axis=1), w, df[parameter].name,
+                           xmin=prior[parameter][0],
+                           xmax=prior[parameter][0] + prior[parameter][1])
+
+
+def get_kde_2d(history, prior, parameter1, parameter2):
+
+    df, w = history if type(history) == list else history.get_distribution()
+    return pyabc.visualization.kde.kde_2d(pd.concat((df[parameter1], df[parameter2]), axis=1), w, df[parameter1].name, df[parameter2].name,
+                            xmin=prior[parameter1][0],
+                            xmax=prior[parameter1][0] + prior[parameter1][1],
+                            ymin=prior[parameter2][0],
+                            ymax=prior[parameter2][0] + prior[parameter2][1])
+
+
+def scatter(history, prior, parameter1, parameter2, ax, **kwargs):
+
+    df, w = history if type(history) == list else history.get_distribution()
+    ax.scatter(df[parameter1], df[parameter2], **kwargs)
+    ax.set_xlim(prior[parameter1][0],
+                prior[parameter1][0] + prior[parameter1][1])
+    ax.set_ylim(prior[parameter2][0],
+                prior[parameter2][0] + prior[parameter2][1])
+
+
+def plot_posterior(history, prior, title=None, true_dipamp=0.0052, true_log_excess=None):
+
+    # plot (copied and adjusted from the pyabc.visualization source code)
+    par_ids = [x for x in prior.keys()]
+    fig, axs = plt.subplots(len(par_ids), len(par_ids), figsize=(10,9), tight_layout=True)
+
+    for i, par_id in enumerate(par_ids):
+
+        # diagonal
+        ax = axs[i, i]
+        x, pdf = get_kde_1d(history, prior, par_id)
+        ax.plot(x, pdf, c='k')
+        if par_id == 'log_excess' and true_log_excess is not None:
+            ax.axvline(true_log_excess, c='b', alpha=0.5)
+        ax.grid(alpha=0.5, lw=0.5)
+        if par_id == 'dipole_amp' and true_dipamp is not None:
+            ax.axvline(true_dipamp, c='b', alpha=0.5)
+
+        axs[i,0].set_ylabel(par_id)
+        axs[len(par_ids)-1,i].set_xlabel(par_id)
+
+        for j in range(0, i):
+
+            # lower
+            ax = axs[i, j]
+            x, y, pdf = get_kde_2d(history, prior, par_ids[j], par_id)
+            mesh = ax.pcolormesh(x, y, pdf, shading='auto')
+
+            # upper
+            ax = axs[j, i]
+            scatter(history, prior, par_id, par_ids[j], ax, color='k', alpha=0.8, marker='.', s=7)
+            ax.grid(alpha=0.5, lw=0.5)
+        
+    title = 'ABC posteriors' if title is None else title
+    fig.suptitle(title)
+
+
+def generate_mocks_from_prior(prior, model, nmocks, nside, **model_args):
+
+    # draw mocks from the prior
+    mocks_prior = []
+    for i in range(nmocks):
+        # randomly draw from the prior
+        pars = {}
+        for key in prior.keys():
+            pars[key] = np.random.uniform(prior[key][0], prior[key][0]+prior[key][1])
+        mocks_prior.append(model(pars, **model_args)['data'])
+    
+    return mocks_prior
+
+
+def compare_mocks(posterior_dir, prior, nmocks, qmap, selfunc, nside, resdir='/scratch/aew492/lss-dipoles_results/results'):
+
+    mock_dict = get_post_prior_mocks(posterior_dir, prior, nmocks, selfunc, nside, resdir)
+
+    # downgrade data
+    qmap_dg = hp.ud_grade(qmap, nside, power=-2)
+
+    # differences
+    res_post = [
+        mock - qmap for mock in mock_dict['mocks_post']
+    ]
+    res_prior = [
+        mock - qmap for mock in mock_dict['mocks_prior']
+    ]
+    res_post_dg = [
+        mock - qmap_dg for mock in mock_dict['mocks_post_dg']
+    ]
+    res_prior_dg = [
+        mock - qmap_dg for mock in mock_dict['mocks_prior_dg']
+    ]
+
+    return dict(res_post=res_post, res_prior=res_prior, res_post_dg=res_post_dg, res_prior_dg=res_prior_dg)
