@@ -11,11 +11,14 @@ import astropy.units as u
 import os
 import healpy as hp
 from healpy.newvisufunc import projview
+import pyabc
+import pandas as pd
+
 
 """
 HEALPIX FUNCTIONS
 """
-def load_catalog_as_map(catalog, frame='icrs', NSIDE=64, dtype=float):
+def load_catalog_as_map(catalog, frame='icrs', nside=64, dtype=float):
     if type(catalog)==str:
         tab = Table.read(catalog, format='fits')
     elif type(catalog)==astropy.table.table.Table:
@@ -32,15 +35,15 @@ def load_catalog_as_map(catalog, frame='icrs', NSIDE=64, dtype=float):
         assert frame=='icrs', "invalid 'frame'"
         lon, lat = tab['ra'], tab['dec']
     # format into healpy map
-    pix_idx = hp.ang2pix(NSIDE, lon, lat, lonlat=True)
-    hpmap = np.bincount(pix_idx, minlength=hp.nside2npix(NSIDE))
+    pix_idx = hp.ang2pix(nside, lon, lat, lonlat=True)
+    hpmap = np.bincount(pix_idx, minlength=hp.nside2npix(nside))
     return hpmap.astype(dtype)
 
-def get_galactic_plane_mask(blim, NSIDE=64, frame='icrs'):
+def get_galactic_plane_mask(blim, nside=64, frame='icrs'):
     """Returns a HEALPix mask (1s and 0s) around the galactic plane given an absolute b (latitude) limit."""
-    lon, lat = hp.pix2ang(NSIDE, np.arange(hp.nside2npix(NSIDE)), lonlat=True)
+    lon, lat = hp.pix2ang(nside, np.arange(hp.nside2npix(nside)), lonlat=True)
     b = SkyCoord(lon * u.deg, lat * u.deg, frame='icrs').galactic.b
-    gal_plane_mask = np.zeros(hp.nside2npix(NSIDE))
+    gal_plane_mask = np.zeros(hp.nside2npix(nside))
     gal_plane_mask[np.abs(b.deg) >= blim] = 1
     return gal_plane_mask
 
@@ -61,10 +64,7 @@ def mollview(map, coord=['C'], graticule=True, graticule_coord=None, graticule_l
         hp.graticule(coord=gratcoord)
 
 def plot_marker(lon, lat, **kwargs):
-    lon = lon.to(u.rad) if isinstance(lon, u.Quantity) else (lon * u.deg).to(u.rad)
-    lat = lat.to(u.rad) if isinstance(lat, u.Quantity) else (lat * u.deg).to(u.rad)
-    theta = Angle((np.pi/2 * u.rad) - lat)
-    phi = Angle(lon)
+    theta, phi = lonlat_to_thetaphi(lon, lat)
     hp.newprojplot(theta, phi.wrap_at(np.pi * u.rad), **kwargs)
 
 def label_coord(ax, coordsysstr):
@@ -75,9 +75,9 @@ def label_coord(ax, coordsysstr):
             fontweight="bold",
             transform=ax.transAxes)
 
-def smooth_map(density_map, verbose=True):
+def smooth_map(density_map, sr=1, verbose=True):
 
-    theta = omega_to_theta(1)  # 1 steradian
+    theta = omega_to_theta(sr)  # convert steradians to angle on the sky
 
     NPIX = len(density_map)
     lon, lat = hp.pix2ang(hp.npix2nside(NPIX), np.arange(NPIX), lonlat=True)
@@ -152,6 +152,13 @@ def omega_to_theta(omega):
     """
     return np.arccos(1 - omega / (2 * np.pi)) * u.rad
 
+def lonlat_to_thetaphi(lon, lat):
+    lon = lon.to(u.rad) if isinstance(lon, u.Quantity) else (lon * u.deg).to(u.rad)
+    lat = lat.to(u.rad) if isinstance(lat, u.Quantity) else (lat * u.deg).to(u.rad)
+    theta = Angle((np.pi/2 * u.rad) - lat)
+    phi = Angle(lon)
+    return theta, phi
+
 """
 DIPOLE-Y THINGS
 """
@@ -174,3 +181,138 @@ def C1_from_D(D):   # from Gibelyou & Huterer (2012)
 
 def D_from_C1(C1):
     return np.sqrt(C1 * 9 / (4 * np.pi))
+
+"""
+FILE MANAGEMENT
+"""
+def filter_max_mocks(fns, max_mocks=None):
+    """
+    Returns a list of mock files, given a mock `case_dict` and parent directory `dir_mocks`.
+    If `max_mocks` is not `None`, only returns the first `max_mocks` trials that match the
+    case_dict.
+
+    """
+    if max_mocks is not None:
+        fns_to_return = []
+        itrial = 0
+        nmocks = 0
+        while nmocks < max_mocks:
+            matches = [x for x in fns if f'trial{itrial:03d}' in x]
+            if len(matches) == 1:
+                fns_to_return.append(matches[0])
+                nmocks += 1
+            else:
+                assert not matches, f"error: need 1 match but found {len(matches)}"
+            itrial += 1
+            if itrial > len(fns):
+                break
+    else:
+        fns_to_return = fns
+
+    return fns_to_return
+
+
+"""
+ABC
+"""
+def get_kde_1d(history, prior, parameter):
+
+    df, w = history if type(history) == list else history.get_distribution()
+    return pyabc.visualization.kde.kde_1d(pd.concat((df[parameter],), axis=1), w, df[parameter].name,
+                           xmin=prior[parameter][0],
+                           xmax=prior[parameter][0] + prior[parameter][1])
+
+
+def get_kde_2d(history, prior, parameter1, parameter2):
+
+    df, w = history if type(history) == list else history.get_distribution()
+    return pyabc.visualization.kde.kde_2d(pd.concat((df[parameter1], df[parameter2]), axis=1), w, df[parameter1].name, df[parameter2].name,
+                            xmin=prior[parameter1][0],
+                            xmax=prior[parameter1][0] + prior[parameter1][1],
+                            ymin=prior[parameter2][0],
+                            ymax=prior[parameter2][0] + prior[parameter2][1])
+
+
+def scatter(history, prior, parameter1, parameter2, ax, **kwargs):
+
+    df, w = history if type(history) == list else history.get_distribution()
+    ax.scatter(df[parameter1], df[parameter2], **kwargs)
+    ax.set_xlim(prior[parameter1][0],
+                prior[parameter1][0] + prior[parameter1][1])
+    ax.set_ylim(prior[parameter2][0],
+                prior[parameter2][0] + prior[parameter2][1])
+
+
+def plot_posterior(history, prior, title=None, true_dipamp=0.0052, true_log_excess=None):
+
+    # plot (copied and adjusted from the pyabc.visualization source code)
+    par_ids = [x for x in prior.keys()]
+    fig, axs = plt.subplots(len(par_ids), len(par_ids), figsize=(10,9), tight_layout=True)
+
+    for i, par_id in enumerate(par_ids):
+
+        # diagonal
+        ax = axs[i, i]
+        x, pdf = get_kde_1d(history, prior, par_id)
+        ax.plot(x, pdf, c='k')
+        if par_id == 'log_excess' and true_log_excess is not None:
+            ax.axvline(true_log_excess, c='b', alpha=0.5)
+        ax.grid(alpha=0.5, lw=0.5)
+        if par_id == 'dipole_amp' and true_dipamp is not None:
+            ax.axvline(true_dipamp, c='b', alpha=0.5)
+
+        axs[i,0].set_ylabel(par_id)
+        axs[len(par_ids)-1,i].set_xlabel(par_id)
+
+        for j in range(0, i):
+
+            # lower
+            ax = axs[i, j]
+            x, y, pdf = get_kde_2d(history, prior, par_ids[j], par_id)
+            mesh = ax.pcolormesh(x, y, pdf, shading='auto')
+
+            # upper
+            ax = axs[j, i]
+            scatter(history, prior, par_id, par_ids[j], ax, color='k', alpha=0.8, marker='.', s=7)
+            ax.grid(alpha=0.5, lw=0.5)
+        
+    title = 'ABC posteriors' if title is None else title
+    fig.suptitle(title)
+
+
+def generate_mocks_from_prior(prior, model, nmocks, nside, **model_args):
+
+    # draw mocks from the prior
+    mocks_prior = []
+    for i in range(nmocks):
+        # randomly draw from the prior
+        pars = {}
+        for key in prior.keys():
+            pars[key] = np.random.uniform(prior[key][0], prior[key][0]+prior[key][1])
+        mocks_prior.append(model(pars, **model_args)['data'])
+    
+    return mocks_prior
+
+
+def compare_mocks(posterior_dir, prior, nmocks, qmap, selfunc, nside, resdir='/scratch/aew492/lss-dipoles_results/results'):
+
+    mock_dict = get_post_prior_mocks(posterior_dir, prior, nmocks, selfunc, nside, resdir)
+
+    # downgrade data
+    qmap_dg = hp.ud_grade(qmap, nside, power=-2)
+
+    # differences
+    res_post = [
+        mock - qmap for mock in mock_dict['mocks_post']
+    ]
+    res_prior = [
+        mock - qmap for mock in mock_dict['mocks_prior']
+    ]
+    res_post_dg = [
+        mock - qmap_dg for mock in mock_dict['mocks_post_dg']
+    ]
+    res_prior_dg = [
+        mock - qmap_dg for mock in mock_dict['mocks_prior_dg']
+    ]
+
+    return dict(res_post=res_post, res_prior=res_prior, res_post_dg=res_post_dg, res_prior_dg=res_prior_dg)

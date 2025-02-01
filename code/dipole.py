@@ -93,7 +93,7 @@ def overdensity_map(qmap, selfunc, min_selfunc=0.5):
     odmap[np.logical_not(good)] = np.NaN # Every line of this code is making Hogg die a little.
     return odmap
 
-def measure_overdensity_dipole_Lambda(sample, selfunc=None, fit_zeros=True, Lambda=0.1, verbose=False):
+def measure_overdensity_dipole_Lambda(sample, Lambda, selfunc=None, fit_zeros=True, verbose=False):
     """
     Wrapper for `dipole.fit_dipole()`. The input `sample` should be an overdensity map.
     """
@@ -154,14 +154,13 @@ def cmb_dipole(frame='icrs', amplitude=0.007, return_amps=False):
     else:
         return get_dipole(amps, frame=frame)
 
-
-def get_dipole(amps, frame='icrs', from_alms=False, verbose=False):
+def get_dipole(comps, frame='icrs', from_alms=False, verbose=False):
     """
     Return the amplitude and direction of a dipole given its three amplitudes.
 
     Parameters
     ----------
-    amps : array-like
+    comps : array-like
         3 orthogonal dipole amplitudes
     frame : SkyCoord-compatible coordinate frame
         frame of the input amplitudes
@@ -173,11 +172,11 @@ def get_dipole(amps, frame='icrs', from_alms=False, verbose=False):
     direction : SkyCoord
         direction of the dipole
     """
-    assert len(amps) == 3
+    assert len(comps) == 3
     if from_alms:
-        amps = tools.a1ms_to_dipole_comps(alms)
-    amp = np.linalg.norm(amps)
-    direction = hp.vec2dir(amps)
+        comps = tools.a1ms_to_dipole_comps(comps)
+    amp = np.linalg.norm(comps)
+    direction = hp.vec2dir(comps)
     direction = SkyCoord(direction[1], np.pi/2 - direction[0], frame=frame, unit='rad')
     if verbose:
         print(f"amp = {amp:.6f}")
