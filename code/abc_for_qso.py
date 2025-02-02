@@ -29,7 +29,7 @@ def main():
 
     population_size = 500
     minimum_epsilon = 1e-10
-    ngens = 20
+    ngens = 18
 
     ell_max = 8
 
@@ -133,6 +133,7 @@ def main():
         'history' : history,
         'prior' : dict(dipole_amp=dipole_amp_bounds, log_excess=log_excess_bounds),
         'observation' : observation,
+        'selfunc' : selfunc,
         'qmap' : qmap_masked,
         'posterior' : history.get_distribution(),
         'ell_max' : ell_max,
