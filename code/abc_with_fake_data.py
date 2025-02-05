@@ -28,12 +28,12 @@ def main():
 
     # parameters in the fit
     expected_dipole_amp = 0.0052
-    log_excess = -5
+    log_excess = -4
         # I did a hacky thing where if the input log_excess < -20, it gets set to exactly zero
 
     # priors
     dipole_amp_bounds = (0., 3. * expected_dipole_amp)
-    log_excess_bounds = (-7, 4)
+    log_excess_bounds = (-20, 2)
     
     # other parameters for constructing the fake observation
     base_rate = 33.6330  # mean base rate of the final 100 accepted samples for Quaia, 14 generations
@@ -69,7 +69,7 @@ def main():
 
     # generate the data using the same model as the mocks
     data = model(data_pars, selfunc, base_rate, cmb_dipdir, theta, phi, ell_max, poisson=poisson,
-                    excess_dipole_comps=anti_comps)
+                    excess_dipole_comps=[0.,0.,0.])
 
     # where to store results
     excess_tag = f"_no_excess" if data_pars['log_excess'] < -20 else f"_excess-1e{data_pars['log_excess']}"
@@ -77,7 +77,8 @@ def main():
     if poisson == False:
         case_name += "_no-SN"
     # !!
-    case_name += "_antipar-dipole"
+    case_name += "_low-excess-prior"
+    case_name += "_no-excess-dipole"
     save_dir = os.path.join(RESULTDIR, 'results/ABC', 'fake_data', case_name, f'{population_size}mocks_{ngens}gens')
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
