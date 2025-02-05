@@ -24,30 +24,52 @@ def main():
     distance_nside = 1
     nside = 64
     blim = 30
+    ell_max = 8
+
+    # parameters in the fit
+    expected_dipole_amp = 0.0052
+    log_excess = -5
+        # I did a hacky thing where if the input log_excess < -20, it gets set to exactly zero
+
+    # priors
+    dipole_amp_bounds = (0., 3. * expected_dipole_amp)
+    log_excess_bounds = (-7, 4)
+    
+    # other parameters for constructing the fake observation
+    base_rate = 33.6330  # mean base rate of the final 100 accepted samples for Quaia, 14 generations
+    poisson = False     # whether to include shot noise
+    selfunc = np.ones(hp.nside2npix(nside))
 
     population_size = 500
-    minimum_epsilon = 1e-10
-    ngens = 15
+    minimum_epsilon = 1e-8
+    ngens = 12
 
-    continue_run = True     # continue a run where we left off, if one exists but stopped (probably due to time limit issues?)
+    continue_run = False     # continue a run where we left off, if one exists but stopped (probably due to time limit issues?)
 
     """ FAKE DATA """
+    data_pars = dict(dipole_amp=expected_dipole_amp, log_excess=log_excess)
+
     # expected dipole direction
     cmb_dipdir = SkyCoord(264, 48, unit=u.deg, frame='galactic')
 
     # (theta, phi) in each healpixel
     theta, phi = hp.pix2ang(nside, ipix=np.arange(hp.nside2npix(nside)))
 
-    selfunc = np.ones(hp.nside2npix(nside))
-    base_rate = 33.6330  # mean base rate of the final 100 accepted samples for Quaia, 14 generations
-    expected_dipole_amp = 0.0052
-    data_pars = dict(dipole_amp=expected_dipole_amp, log_excess=-6)
-        # I did a hacky thing where if the input log_excess < -20, it gets set to exactly zero
-    ell_max = 8
-    poisson = True
+    # orthogonal dipole comps (not alms: this is a 3-vector in (x,y,z) with norm dipole_amp)
+    comps = tools.spherical_to_cartesian(r=expected_dipole_amp,
+                                        theta=np.pi/2-cmb_dipdir.icrs.dec.rad,
+                                        phi=cmb_dipdir.icrs.ra.rad)
+
+    # antiparallel dipole amps
+    anti_comps = -comps
+    # make the amplitude match the excess power
+    anti_comps /= np.linalg.norm(anti_comps)
+    anti_comps *= tools.D_from_C1(10**log_excess)
+    # perpendicular dipole amps
 
     # generate the data using the same model as the mocks
-    data = model(data_pars, selfunc, base_rate, cmb_dipdir, theta, phi, ell_max, poisson=poisson)
+    data = model(data_pars, selfunc, base_rate, cmb_dipdir, theta, phi, ell_max, poisson=poisson,
+                    excess_dipole_comps=anti_comps)
 
     # where to store results
     excess_tag = f"_no_excess" if data_pars['log_excess'] < -20 else f"_excess-1e{data_pars['log_excess']}"
@@ -55,7 +77,7 @@ def main():
     if poisson == False:
         case_name += "_no-SN"
     # !!
-    case_name += "_low-excess-prior"
+    case_name += "_antipar-dipole"
     save_dir = os.path.join(RESULTDIR, 'results/ABC', 'fake_data', case_name, f'{population_size}mocks_{ngens}gens')
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
@@ -65,8 +87,6 @@ def main():
         # mean of odmap = 0. ; any masked pixels are zero # !!
 
     """ PRIOR """
-    dipole_amp_bounds = (0., 3. * expected_dipole_amp)
-    log_excess_bounds = (-10, 3)     # !! purposefully low prior
     prior = pyabc.Distribution(dipole_amp = pyabc.RV("uniform", *dipole_amp_bounds),
                            log_excess = pyabc.RV("uniform", *log_excess_bounds))
 
@@ -162,7 +182,7 @@ def distance(x, x0, nside):
                                                             # power = -2 preserves the sum of the map => preserves total number of quasars
 
 
-def model(parameters, selfunc, base_rate, dipdir, theta, phi, ell_max=8, poisson=True):
+def model(parameters, selfunc, base_rate, dipdir, theta, phi, ell_max=8, poisson=True, excess_dipole_comps=None):
     """
     Generates a healpix density map with dipole in fixed CMB dipole direction and excess angular power.
     Uses fiducial selection function (Quaia + galactic plane mask + smaller masks from S21).
@@ -177,6 +197,9 @@ def model(parameters, selfunc, base_rate, dipdir, theta, phi, ell_max=8, poisson
         Selection function map. The map is generated with the same npix.
     base_rate : float
         Base rate (used to be a parameter, now hard-coded).
+    excess_dipole_comps : array-like (len 3) or None, optional
+        Optionally input a set of three orthogonal dipole amplitudes to specify the amplitude and direction of
+        the "excess dipole." If `None`, uses `parameters['log_excess']` to draw random a1ms (like the other alms).
 
     Returns
     -------
@@ -187,20 +210,28 @@ def model(parameters, selfunc, base_rate, dipdir, theta, phi, ell_max=8, poisson
     nside = hp.npix2nside(len(selfunc))
 
     # expected dipole map
-    # amps = np.zeros(4)
     amps = tools.spherical_to_cartesian(r=parameters["dipole_amp"],
                                         theta=np.pi/2-dipdir.icrs.dec.rad,
                                         phi=dipdir.icrs.ra.rad)
     expected_dipole_map = dipole.dipole(theta, phi, *amps)
 
-    # add Cells
-    # Cells: flat, determined by input log_excess
+    # excess power:
     if parameters["log_excess"] < -20:  # magic, kind of hacky but I want a way to have literally zero excess power
         excess_map = np.zeros_like(expected_dipole_map)
     else:
-        Cells = np.zeros(ell_max)
-        Cells[1:] += 10**parameters["log_excess"]   # because we don't want excess power in the monopole
-        excess_map = hp.sphtfunc.synfast(Cells, nside)
+        if excess_dipole_comps is not None:
+            assert len(excess_dipole_comps) == 3, "must input three dipole amplitudes (m=-1, 0, 1)"
+            excess_map = dipole.dipole(theta, phi, *excess_dipole_comps)
+
+            # then just add power in Cells starting at ell=2
+            Cells = np.zeros(ell_max)
+            Cells[2:] += 10**parameters["log_excess"]
+            excess_map += hp.sphtfunc.synfast(Cells, nside)
+        else:
+            # otherwise just add Cells like normal: flat, determined by input log_excess (and maybe input_a1ms)
+            Cells = np.zeros(ell_max)
+            Cells[1:] += 10**parameters["log_excess"]   # because we don't want excess power in the monopole
+            excess_map = hp.sphtfunc.synfast(Cells, nside)
 
     # smooth overdensity map
     smooth_overdensity_map = expected_dipole_map + excess_map
