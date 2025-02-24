@@ -28,21 +28,22 @@ def main():
 
     # parameters in the fit
     expected_dipole_amp = 0.0052
-    log_excess = -4
+    log_excess = -6 #np.log10(3e-5)
         # I did a hacky thing where if the input log_excess < -20, it gets set to exactly zero
 
     # priors
     dipole_amp_bounds = (0., 3. * expected_dipole_amp)
-    log_excess_bounds = (-20, 2)
+    log_excess_bounds = (-7, 4)
     
     # other parameters for constructing the fake observation
     base_rate = 33.6330  # mean base rate of the final 100 accepted samples for Quaia, 14 generations
-    poisson = False     # whether to include shot noise
-    selfunc = np.ones(hp.nside2npix(nside))
+    poisson = True     # whether to include shot noise
+    selfunc_str = 'quaia_G20.0_orig'
+    selfunc = gm.get_selfunc_map(selfunc_str, nside=nside, blim=blim) #np.ones(hp.nside2npix(nside))
 
     population_size = 500
     minimum_epsilon = 1e-8
-    ngens = 12
+    ngens = 14
 
     continue_run = False     # continue a run where we left off, if one exists but stopped (probably due to time limit issues?)
 
@@ -60,25 +61,25 @@ def main():
                                         theta=np.pi/2-cmb_dipdir.icrs.dec.rad,
                                         phi=cmb_dipdir.icrs.ra.rad)
 
-    # antiparallel dipole amps
-    anti_comps = -comps
-    # make the amplitude match the excess power
-    anti_comps /= np.linalg.norm(anti_comps)
-    anti_comps *= tools.D_from_C1(10**log_excess)
-    # perpendicular dipole amps
+    # # antiparallel dipole amps
+    # anti_comps = -comps
+    # # make the amplitude match the excess power
+    # anti_comps /= np.linalg.norm(anti_comps)
+    # anti_comps *= tools.D_from_C1(10**log_excess)
+    # # perpendicular dipole amps
 
     # generate the data using the same model as the mocks
-    data = model(data_pars, selfunc, base_rate, cmb_dipdir, theta, phi, ell_max, poisson=poisson,
-                    excess_dipole_comps=[0.,0.,0.])
+    data = model(data_pars, selfunc, base_rate, cmb_dipdir, theta, phi, ell_max, poisson=poisson)#,
+                    #excess_dipole_comps=[0.,0.,0.])
 
     # where to store results
-    excess_tag = f"_no_excess" if data_pars['log_excess'] < -20 else f"_excess-1e{data_pars['log_excess']}"
+    excess_tag = f"_no_excess" if data_pars['log_excess'] < -20 else f"_excess-1e{data_pars['log_excess']:.1f}" # !
     case_name = f"dipole-{data_pars['dipole_amp']}{excess_tag}_base-rate-{base_rate:.4f}"
     if poisson == False:
         case_name += "_no-SN"
-    # !!
-    case_name += "_low-excess-prior"
-    case_name += "_no-excess-dipole"
+    # # !!
+    # case_name += "_low-excess-prior"
+    # case_name += "_no-excess-dipole"
     save_dir = os.path.join(RESULTDIR, 'results/ABC', 'fake_data', case_name, f'{population_size}mocks_{ngens}gens')
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)

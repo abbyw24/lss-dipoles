@@ -20,20 +20,20 @@ def main():
     # dipamp = 0.0052
     # excess = '1e-4'
 
-    base_rate = 33.633 # for Quaia , 77.4495 # for Catwise
+    base_rate = 77.4495 # for Catwise, 33.633 # for Quaia
     nmocks = 500
     ngens = 20
     ell_max = 8
 
     # regularization for the Cells
-    Lambda = 0.
+    Lambda = 1e-3
 
     n = 500  # number to actually compute (will take the first n)
     overwrite = False
 
     # info to load
     result_dir = os.path.join('/scratch/aew492/lss-dipoles_results/results/ABC/',
-                                f'quaia_dipole_excess_nside1_{nmocks}mocks_{ngens}iters_base-rate-{base_rate:.4f}')
+                                f'catwise_dipole_excess_nside1_{nmocks}mocks_{ngens}iters_base-rate-{base_rate:.4f}')
                                     # f'fake_data/dipole-{dipamp:.4f}_excess-{excess}_base-rate-{base_rate:.4f}',
                                     # f'{nmocks}mocks_{ngens}gens')
     posterior_dir = os.path.join(result_dir, 'accepted_samples')
@@ -42,7 +42,7 @@ def main():
     ]
 
     # where to save
-    save_dir = os.path.join(result_dir, 'accepted_samples_Cells')
+    save_dir = os.path.join(result_dir, 'accepted_samples_Cells', f'Lambda-{Lambda:.0e}')
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
     save_fn_list = [

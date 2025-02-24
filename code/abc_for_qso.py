@@ -23,23 +23,22 @@ def main():
 
     catname = 'quaia'
 
-    distance_nside = 1
+    distance_nside = 16
     nside = 64
     blim = 30
 
     population_size = 500
     minimum_epsilon = 1e-10
-    ngens = 18
+    ngens = 14
 
     ell_max = 8
 
-    continue_run = True     # continue a run where we left off, if one exists but stopped (probably due to time limit issues?)
+    continue_run = False     # continue a run where we left off, if one exists but stopped (probably due to time limit issues?)
 
     # catalog-specific inputs
     if catname == 'quaia':
         fn_cat = os.path.join(RESULTDIR, f'data/catalogs/quaia/quaia_G20.0.fits')
         selfunc_str = 'quaia_G20.0_orig'
-        # selfunc_fn = os.path.join(RESULTDIR, f'data/catalogs/quaia/selfuncs/selection_function_NSIDE64_G20.0.fits')
         expected_dipole_amp = 0.0052
         dipole_amp_bounds = (0., 3 * expected_dipole_amp) # first is lower bound, second entry is WIDTH (not upper bound)
         log_excess_bounds = (-7, 4)
@@ -48,7 +47,6 @@ def main():
         assert catname == 'catwise', "catname must be quaia or catwise"
         fn_cat = os.path.join(RESULTDIR, f'data/catalogs/catwise_agns/catwise_agns_master.fits')
         selfunc_str = 'catwise_zodi'
-        # selfunc_fn = os.path.join(RESULTDIR, f'data/catalogs/catwise_agns/selfuncs/selection_function_NSIDE64_catwise_pluszodis.fits')
         expected_dipole_amp = 0.0074
         dipole_amp_bounds = (0., 3 * expected_dipole_amp)
         log_excess_bounds = (-7, 4)
@@ -57,6 +55,8 @@ def main():
     # where to store results
     save_dir = os.path.join(RESULTDIR, 'results/ABC',
                             f'{catname}_dipole_excess_nside{distance_nside}_{population_size}mocks_{ngens}iters_base-rate-{base_rate:.4f}')
+    if 'elatcorr' in selfunc_str:
+        save_dir += '_elatcorr'
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
 
