@@ -134,25 +134,25 @@ def getDipoleVectors_healpy(densitymap, mask=[None], galcut=0, verbose=False) :
 	return dipole_norm,d
 
 
-def cmb_dipole(frame='icrs', amplitude=0.007, return_amps=False):
+def cmb_dipole(frame='icrs', amplitude=0.007, return_comps=False):
     """
     Return the orthogonal (x,y,z) CMB dipole components.
     """
     cmb_dipdir = SkyCoord(264, 48, unit=u.deg, frame='galactic')
     if frame=='icrs':
-        amps = tools.spherical_to_cartesian(r=amplitude,
+        comps = tools.spherical_to_cartesian(r=amplitude,
                                              theta=np.pi/2-cmb_dipdir.icrs.dec.rad,
                                              phi=cmb_dipdir.icrs.ra.rad)
     elif frame=='galactic':
-        amps = tools.spherical_to_cartesian(r=amplitude,
+        comps = tools.spherical_to_cartesian(r=amplitude,
                                              theta=np.pi/2-cmb_dipdir.b.rad,
                                              phi=cmb_dipdir.l.rad)
     else:
         assert False, "unknown frame"
-    if return_amps is True:
-        return amps
+    if return_comps is True:
+        return comps
     else:
-        return get_dipole(amps, frame=frame)
+        return get_dipole(comps, frame=frame)
 
 def get_dipole(comps, frame='icrs', from_alms=False, verbose=False):
     """
