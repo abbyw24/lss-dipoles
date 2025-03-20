@@ -21,7 +21,7 @@ def main():
 
     """ MAIN INPUTS """
 
-    catname = 'quaia'
+    catname = 'catwise'
 
     distance_nside = 16
     nside = 64
@@ -29,11 +29,11 @@ def main():
 
     population_size = 500
     minimum_epsilon = 1e-10
-    ngens = 14
+    ngens = 18
 
     ell_max = 8
 
-    continue_run = False     # continue a run where we left off, if one exists but stopped (probably due to time limit issues?)
+    continue_run = False        # continue a run where we left off, if one exists but stopped (probably due to time limit issues?)
 
     # catalog-specific inputs
     if catname == 'quaia':
@@ -46,13 +46,19 @@ def main():
     else:
         assert catname == 'catwise', "catname must be quaia or catwise"
         fn_cat = os.path.join(RESULTDIR, f'data/catalogs/catwise_agns/catwise_agns_master.fits')
-        selfunc_str = 'catwise_zodi'
+        selfunc_str = 'catwise'
         expected_dipole_amp = 0.0074
         dipole_amp_bounds = (0., 3 * expected_dipole_amp)
         log_excess_bounds = (-7, 4)
         base_rate = 77.4495 # mean base rate of the final 100 accepted samples for CatWISE, 13 generations
 
     # where to store results
+
+    # hacky but I want to distinguish between results with catwise_zodi and the nonzodi catwise selfunc
+    if selfunc_str == 'catwise_zodi':
+        catname_ = 'catwise_zodi'
+    else:
+        catname_ = catname
     save_dir = os.path.join(RESULTDIR, 'results/ABC',
                             f'{catname}_dipole_excess_nside{distance_nside}_{population_size}mocks_{ngens}iters_base-rate-{base_rate:.4f}')
     if 'elatcorr' in selfunc_str:

@@ -3,6 +3,7 @@ import os
 import sys
 import tempfile
 import pyabc
+from datetime import datetime
 
 import healpy as hp
 from scipy.special import sph_harm
@@ -28,17 +29,17 @@ def main():
 
     # parameters in the fit
     expected_dipole_amp = 0.0052
-    log_excess = -6 #np.log10(3e-5)
+    log_excess = -5 #np.log10(3e-5)
         # I did a hacky thing where if the input log_excess < -20, it gets set to exactly zero
 
     # priors
     dipole_amp_bounds = (0., 3. * expected_dipole_amp)
-    log_excess_bounds = (-7, 4)
+    log_excess_bounds = (-8, 5)
     
     # other parameters for constructing the fake observation
     base_rate = 33.6330  # mean base rate of the final 100 accepted samples for Quaia, 14 generations
     poisson = True     # whether to include shot noise
-    selfunc_str = 'quaia_G20.0_orig'
+    selfunc_str = 'ones'
     selfunc = gm.get_selfunc_map(selfunc_str, nside=nside, blim=blim) #np.ones(hp.nside2npix(nside))
 
     population_size = 500
@@ -57,9 +58,13 @@ def main():
     theta, phi = hp.pix2ang(nside, ipix=np.arange(hp.nside2npix(nside)))
 
     # orthogonal dipole comps (not alms: this is a 3-vector in (x,y,z) with norm dipole_amp)
-    comps = tools.spherical_to_cartesian(r=expected_dipole_amp,
+    print(f"excess dipole amplitude = {tools.D_from_C1(10**log_excess):.5f}", flush=True)
+    dipole_comps = tools.spherical_to_cartesian(r=tools.D_from_C1(10**log_excess),
                                         theta=np.pi/2-cmb_dipdir.icrs.dec.rad,
                                         phi=cmb_dipdir.icrs.ra.rad)
+    excess_dipole_comps = dipole_comps
+    # and add to data pars dict
+    data_pars['excess_dipole_comps'] = excess_dipole_comps
 
     # # antiparallel dipole amps
     # anti_comps = -comps
@@ -69,18 +74,19 @@ def main():
     # # perpendicular dipole amps
 
     # generate the data using the same model as the mocks
-    data = model(data_pars, selfunc, base_rate, cmb_dipdir, theta, phi, ell_max, poisson=poisson)#,
-                    #excess_dipole_comps=[0.,0.,0.])
+    data = model(data_pars, selfunc, base_rate, cmb_dipdir, theta, phi, ell_max, poisson=poisson, return_alms=True,
+                excess_dipole_comps=excess_dipole_comps)
 
     # where to store results
     excess_tag = f"_no_excess" if data_pars['log_excess'] < -20 else f"_excess-1e{data_pars['log_excess']:.1f}" # !
-    case_name = f"dipole-{data_pars['dipole_amp']}{excess_tag}_base-rate-{base_rate:.4f}"
+    case_name = f"dipole-{data_pars['dipole_amp']}{excess_tag}_base-rate-{base_rate:.4f}_{selfunc_str}"
     if poisson == False:
         case_name += "_no-SN"
     # # !!
-    # case_name += "_low-excess-prior"
-    # case_name += "_no-excess-dipole"
-    save_dir = os.path.join(RESULTDIR, 'results/ABC', 'fake_data', case_name, f'{population_size}mocks_{ngens}gens')
+    case_name += "_parallel-excess-dipole"
+    today = datetime.now().strftime("%Y-%m-%d")
+    save_dir = os.path.join(RESULTDIR, 'results/ABC', 'fake_data', case_name,
+                            f'{population_size}mocks_{ngens}gens_{today}')
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
 
@@ -96,7 +102,7 @@ def main():
     # need these wrapper functions to match required format for pyabc ; selfunc and nside defined above
     def model_wrapper(parameters):
         
-        return model(parameters, selfunc, base_rate, cmb_dipdir, theta, phi, ell_max)
+        return model(parameters, selfunc, base_rate, cmb_dipdir, theta, phi, ell_max, poisson=poisson)
 
     def distance_wrapper(x, x0):
 
@@ -184,7 +190,9 @@ def distance(x, x0, nside):
                                                             # power = -2 preserves the sum of the map => preserves total number of quasars
 
 
-def model(parameters, selfunc, base_rate, dipdir, theta, phi, ell_max=8, poisson=True, excess_dipole_comps=None):
+def model(parameters, selfunc, base_rate, dipdir, theta, phi, ell_max=8, poisson=True,
+            excess_dipole_comps=None,
+            return_alms=False):
     """
     Generates a healpix density map with dipole in fixed CMB dipole direction and excess angular power.
     Uses fiducial selection function (Quaia + galactic plane mask + smaller masks from S21).
@@ -202,6 +210,8 @@ def model(parameters, selfunc, base_rate, dipdir, theta, phi, ell_max=8, poisson
     excess_dipole_comps : array-like (len 3) or None, optional
         Optionally input a set of three orthogonal dipole amplitudes to specify the amplitude and direction of
         the "excess dipole." If `None`, uses `parameters['log_excess']` to draw random a1ms (like the other alms).
+    return_alms : bool, optional (default True)
+        Whether to return the alms drawn at random from the Cells.
 
     Returns
     -------
@@ -218,22 +228,26 @@ def model(parameters, selfunc, base_rate, dipdir, theta, phi, ell_max=8, poisson
     expected_dipole_map = dipole.dipole(theta, phi, *amps)
 
     # excess power:
-    if parameters["log_excess"] < -20:  # magic, kind of hacky but I want a way to have literally zero excess power
-        excess_map = np.zeros_like(expected_dipole_map)
-    else:
+    excess_map = np.zeros_like(expected_dipole_map)
+    if parameters["log_excess"] > -20:  # magic, kind of hacky but I want a way to have literally zero excess power
         if excess_dipole_comps is not None:
             assert len(excess_dipole_comps) == 3, "must input three dipole amplitudes (m=-1, 0, 1)"
-            excess_map = dipole.dipole(theta, phi, *excess_dipole_comps)
+            excess_map += dipole.dipole(theta, phi, *excess_dipole_comps)
 
             # then just add power in Cells starting at ell=2
-            Cells = np.zeros(ell_max)
+            Cells = np.zeros(ell_max + 1)
             Cells[2:] += 10**parameters["log_excess"]
-            excess_map += hp.sphtfunc.synfast(Cells, nside)
         else:
             # otherwise just add Cells like normal: flat, determined by input log_excess (and maybe input_a1ms)
-            Cells = np.zeros(ell_max)
+            Cells = np.zeros(ell_max + 1)
             Cells[1:] += 10**parameters["log_excess"]   # because we don't want excess power in the monopole
-            excess_map = hp.sphtfunc.synfast(Cells, nside)
+        
+        # generate excess power in the map by randomly drawing alms from the Cell spectrum
+        if return_alms == True:
+            excess_map_, alms = hp.sphtfunc.synfast(Cells, nside, alm=True)
+            excess_map += excess_map_
+        else:
+            excess_map += hp.sphtfunc.synfast(Cells, nside)
 
     # smooth overdensity map
     smooth_overdensity_map = expected_dipole_map + excess_map
@@ -244,8 +258,14 @@ def model(parameters, selfunc, base_rate, dipdir, theta, phi, ell_max=8, poisson
         rng = np.random.default_rng(seed=None) # should I put a seed in here??
         number_map = rng.poisson(number_map)
 
-    return { "data" : number_map }
+    res = { "data" : number_map }
 
+    if return_alms == True:
+        res["alms"] = alms
+    if excess_dipole_comps is not None:
+        res["excess_dipole_comps"] = excess_dipole_comps
+
+    return res
 
 if __name__=='__main__':
     main()
