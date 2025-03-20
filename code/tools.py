@@ -159,11 +159,21 @@ def lonlat_to_thetaphi(lon, lat):
     phi = Angle(lon)
     return theta, phi
 
+def thetaphi_to_lonlat(theta, phi):
+    phi = lon.to(u.rad) if isinstance(phi, u.Quantity) else (phi * u.rad)
+    theta = lat.to(u.rad) if isinstance(theta, u.Quantity) else (theta * u.rad)
+    lon = Angle(phi).to(u.deg)
+    lat = Angle((np.pi/2 * u.rad) - theta).to(u.deg)
+    return lon, lat
+
 """
 DIPOLE-Y THINGS
 """
 def dipole_dir_to_comps(direction):
     return hp.dir2vec(np.pi/2 - direction.dec.rad, direction.ra.rad)
+
+def dipole_comps_to_dir(comps):
+    return hp.vec2dir()
 
 def a1ms_to_dipole_comps(a1ms):
     """
@@ -171,10 +181,21 @@ def a1ms_to_dipole_comps(a1ms):
     (like as output by multipoles fitting functions).
     """
     assert len(a1ms) == 3
-    a1x = np.sqrt(3 / (4 * np.pi)) * a1ms[2]
-    a1y = np.sqrt(3 / (4 * np.pi)) * a1ms[0]
-    a1z = np.sqrt(3 / (4 * np.pi)) * a1ms[1]
-    return np.array([a1x, a1y, a1z])
+    Dx, Dy, Dz = [
+        np.sqrt(3 / 4 * np.pi) * a1ms[i] for i in [2, 0, 1]     # a10 corresponds to z
+    ]
+    return np.array([Dx, Dy, Dz])
+
+def dipole_comps_to_a1ms(comps):
+    """
+    Inputs assumed to be in order (D_x, D_y, D_z)
+    (like as output by dipole fitting functions including `healpy.fit_dipole()`)
+    """
+    assert len(comps) == 3
+    a1ms = [
+        2 * np.sqrt(np.pi / 3) * Di for Di in comps
+    ]
+    return a1ms
 
 def C1_from_D(D):   # from Gibelyou & Huterer (2012)
     return 4 * np.pi / 9 * D**2
