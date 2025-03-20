@@ -299,8 +299,13 @@ def get_selfunc_map(selfunc_str, nside=NSIDE, blim=30):
         mask_map = fitsio.read(mask_fn) # mask saved in fits, not healpy save convention
         selfunc_map *= mask_map 
         selfunc_map *= gal_plane_mask
+    elif selfunc_str == 'catwise':
+        fn_selfunc = os.path.join(RESULTDIR, f'data/catalogs/catwise_agns/selfuncs/selection_function_NSIDE{nside}_catwise.fits')
+        selfunc_map = hp.read_map(fn_selfunc)
+        mask_map = fitsio.read(mask_fn) # mask saved in fits, not healpy save convention
+        selfunc_map *= mask_map
+        selfunc_map *= gal_plane_mask
     elif selfunc_str == 'catwise_zodi':
-        # note that catwise fiducial selfunc includes z
         fn_selfunc = os.path.join(RESULTDIR, f'data/catalogs/catwise_agns/selfuncs/selection_function_NSIDE{nside}_catwise_pluszodis.fits')
         selfunc_map = hp.read_map(fn_selfunc)
         mask_map = fitsio.read(mask_fn) # mask saved in fits, not healpy save convention
