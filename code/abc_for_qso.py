@@ -21,9 +21,9 @@ def main():
 
     """ MAIN INPUTS """
 
-    catname = 'catwise'
+    catname = 'quaia_G20.0'
 
-    distance_nside = 16
+    distance_nside = 1
     nside = 64
     blim = 30
 
@@ -36,12 +36,13 @@ def main():
     continue_run = False        # continue a run where we left off, if one exists but stopped (probably due to time limit issues?)
 
     # catalog-specific inputs
-    if catname == 'quaia':
-        fn_cat = os.path.join(RESULTDIR, f'data/catalogs/quaia/quaia_G20.0.fits')
-        selfunc_str = 'quaia_G20.0_orig'
+    if 'quaia' in catname:
+        Glim = catname.split('quaia_G')[1]
+        fn_cat = os.path.join(RESULTDIR, f'data/catalogs/quaia/quaia_G{Glim}.fits')
+        selfunc_str = f'quaia_G{Glim}_orig'
         expected_dipole_amp = 0.0052
         dipole_amp_bounds = (0., 3 * expected_dipole_amp) # first is lower bound, second entry is WIDTH (not upper bound)
-        log_excess_bounds = (-7, 4)
+        log_excess_bounds = (-8, 5)
         base_rate = 33.6330  # mean base rate of the final 100 accepted samples for Quaia, 14 generations
     else:
         assert catname == 'catwise', "catname must be quaia or catwise"
@@ -49,20 +50,17 @@ def main():
         selfunc_str = 'catwise'
         expected_dipole_amp = 0.0074
         dipole_amp_bounds = (0., 3 * expected_dipole_amp)
-        log_excess_bounds = (-7, 4)
+        log_excess_bounds = (-8, 5)
         base_rate = 77.4495 # mean base rate of the final 100 accepted samples for CatWISE, 13 generations
 
     # where to store results
-
-    # hacky but I want to distinguish between results with catwise_zodi and the nonzodi catwise selfunc
-    if selfunc_str == 'catwise_zodi':
-        catname_ = 'catwise_zodi'
-    else:
+    # hacky but I don't want 'orig' in the quaia names
+    if 'orig' in selfunc_str:
         catname_ = catname
+    else:
+        catname_ = selfunc_str
     save_dir = os.path.join(RESULTDIR, 'results/ABC',
-                            f'{catname}_dipole_excess_nside{distance_nside}_{population_size}mocks_{ngens}iters_base-rate-{base_rate:.4f}')
-    if 'elatcorr' in selfunc_str:
-        save_dir += '_elatcorr'
+                            f'{catname_}_dipole_excess_nside{distance_nside}_{population_size}mocks_{ngens}iters_base-rate-{base_rate:.4f}')
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
 
