@@ -1,12 +1,10 @@
 import numpy as np
 import os
 import sys
-import astropy.units as u
-from astropy.coordinates import SkyCoord
 import healpy as hp
 
 import tools
-from abc_with_fake_data import model
+import multipoles
 
 def main():
 
@@ -15,76 +13,61 @@ def main():
     """
 
     # inputs
-    dipamp = 0.0052
-    excess = '1e-4'
+    dipamp = 0.0
     base_rate = 33.633
     nmocks = 500
     ngens = 15
     nside = 64
-    sr = 1
 
-    n_to_smooth = 500  # will take the first n mocks from the accepted samples, and generate(&smooth) n mocks from the prior
-    overwrite = True
+    selfunc = np.ones(hp.nside2npix(nside))
+
+    Lambda = 0.
+
+    overwrite = False
+
+    n_to_compute = 500  # will take the first n mocks from the accepted samples, and generate(&smooth) n mocks from the prior
 
     # directory things
     result_dir = os.path.join('/scratch/aew492/lss-dipoles_results/results/ABC/fake_data',
-                                    f'dipole-{dipamp:.4f}_excess-{excess}_base-rate-{base_rate:.4f}',
-                                    f'{nmocks}mocks_{ngens}gens')
+                                    f'dipole-{dipamp:.1f}_no_excess_base-rate-{base_rate:.4f}_ones_shot-noise-only',
+                                    f'{nmocks}mocks_{ngens}gens_2025-04-02')
     posterior_dir = os.path.join(result_dir, 'accepted_samples')
-    prior_dir = os.path.join(result_dir, 'prior_samples')
-    if not os.path.exists(prior_dir):
-        os.makedirs(prior_dir)
     post_mocks_fn_list = [
-        os.path.join(posterior_dir, f'mock{i}') for i in range(n_to_smooth)
-    ]
-    prior_mocks_fn_list = [
-        os.path.join(prior_dir, f'mock{i}') for i in range(n_to_smooth)
+        os.path.join(posterior_dir, f'mock{i}') for i in range(n_to_compute)
     ]
 
-    post_mocks_to_generate = post_mocks_fn_list.copy()
-    prior_mocks_to_generate = prior_mocks_fn_list.copy()
+    Cells_dir = os.path.join(posterior_dir, 'Cells')
+    if not os.path.exists(Cells_dir):
+        os.makedirs(Cells_dir)
+    save_fn_list = [
+        os.path.join(Cells_dir, f'Cells_Lambda-{Lambda:.1f}_mock{i}') for i in range(n_to_compute)
+    ]
 
-    # do the smoothed mocks exist?
+    fns_to_compute = post_mocks_fn_list.copy()
+    save_fn_list_to_compute = save_fn_list.copy()
     if overwrite == False:
-        for i in range(n_to_smooth):
-            if os.path.exists(post_mocks_fn_list[i]+'_smoothed.npy'):
-                post_mocks_to_generate.remove(post_mocks_fn_list[i])
-            if os.path.exists(prior_mocks_fn_list[i]+'_smoothed.npy'):
-                prior_mocks_to_generate.remove(prior_mocks_fn_list[i])
-
-    # load the ABC results
-    resdict = np.load(os.path.join(result_dir, f'results.npy'), allow_pickle=True).item()
+        for i in range(n_to_compute):
+            if os.path.exists(save_fn_list[i]):
+                fns_to_compute.remove(post_mocks_fn_list[i])
+                save_fn_list_to_compute.remove(save_fn_list_to_compute[i])
+    print(f"computing {len(fns_to_compute)} Cells", flush=True)
 
     """
-    get mocks from the prior and posterior
+    compute Cells from the posterior mocks
     """
 
-    # ## POSTERIOR ##
-    # print("smoothing the posterior mocks")
-    # for i, fn in enumerate(post_mocks_to_generate):
-    #     print(f"{i+1} of {len(post_mocks_to_generate)}")
-    #     mock = np.load(fn+'.npy')
-    #     smoothed_mock = tools.smooth_map(mock, sr=sr)
-    #     np.save(fn+'_smoothed.npy', smoothed_mock)
+    for i, mock_fn in enumerate(fns_to_compute):
+        print(f"mock {i}", flush=True)
+        mock = np.load(mock_fn + '.npy')
+        odmap = mock / np.nanmean(mock) - 1
+        ells, Cells, alms = multipoles.compute_Cells_in_overdensity_map_Lambda(odmap,
+                                                                Lambda=Lambda,
+                                                                max_ell=8, # magic
+                                                                selfunc=selfunc,
+                                                                return_alms=True)
+        np.save(save_fn_list_to_compute[i], {'ells' : ells, 'Cells' : Cells, 'alms' : alms})
 
-
-    ## PRIOR ##
-
-    # required inputs for the sky model
-    selfunc = np.ones(hp.nside2npix(nside))
-    dipdir = SkyCoord(264, 48, unit=u.deg, frame='galactic')
-    theta, phi = hp.pix2ang(nside, ipix=np.arange(hp.nside2npix(nside)))
-    model_args = dict(base_rate=base_rate, selfunc=selfunc, dipdir=dipdir, theta=theta, phi=phi, ell_max=resdict['ell_max'])
-
-    prior_mocks = tools.generate_mocks_from_prior(resdict['prior'], model, len(prior_mocks_to_generate), nside, **model_args)
-    for i, fn in enumerate(prior_mocks_to_generate):
-        np.save(fn, prior_mocks[i])
-    # for i, fn in enumerate(prior_mocks_to_generate):
-    #     print(f"{i+1} of {len(prior_mocks_to_generate)}")
-    #     smoothed_mock = tools.smooth_map(prior_mocks[i], sr=sr)
-    #     np.save(fn+'_smoothed.npy', smoothed_mock)
-
-    print("done!")
+    print("done!", flush=True)
 
 
 if __name__ == '__main__':
