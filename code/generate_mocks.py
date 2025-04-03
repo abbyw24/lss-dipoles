@@ -297,7 +297,23 @@ def get_selfunc_map(selfunc_str, nside=NSIDE, blim=30):
         fn_selfunc_quaia = os.path.join(RESULTDIR, f'data/catalogs/quaia/selfuncs/selection_function_NSIDE{nside}_G20.0_pluszodis.fits')
         selfunc_map = hp.read_map(fn_selfunc_quaia)
         mask_map = fitsio.read(mask_fn) # mask saved in fits, not healpy save convention
-        selfunc_map *= mask_map 
+        selfunc_map *= mask_map
+        selfunc_map *= gal_plane_mask
+    elif 'zsplit2bin' in selfunc_str:
+        Glim = selfunc_str.split('G')[1].split('_zsplit')[0] # gross!
+        assert Glim in ['20.0', '20.5'], f"G lim {Glim} not 20.0 or 20.5"
+        ibin = selfunc_str.split('_zsplit2bin')[1]
+        assert ibin in ['0', '1'], f"bin {ibin} not 0 or 1"
+        fn_selfunc_quaia = os.path.join(RESULTDIR, f'data/catalogs/quaia/selfuncs/selection_function_NSIDE{nside}_G{Glim}_zsplit2bin{ibin}.fits')
+        selfunc_map = hp.read_map(fn_selfunc_quaia)
+        mask_map = fitsio.read(mask_fn) # mask saved in fits, not healpy save convention
+        selfunc_map *= mask_map
+        selfunc_map *= gal_plane_mask
+    elif selfunc_str == 'quaia_G20.5_orig':
+        fn_selfunc_quaia = os.path.join(RESULTDIR, f'data/catalogs/quaia/selfuncs/selection_function_NSIDE{nside}_G20.5.fits')
+        selfunc_map = hp.read_map(fn_selfunc_quaia)
+        mask_map = fitsio.read(mask_fn) # mask saved in fits, not healpy save convention
+        selfunc_map *= mask_map # TODO check that this is right
         selfunc_map *= gal_plane_mask
     elif selfunc_str == 'catwise':
         fn_selfunc = os.path.join(RESULTDIR, f'data/catalogs/catwise_agns/selfuncs/selection_function_NSIDE{nside}_catwise.fits')
