@@ -28,28 +28,29 @@ def main():
     ell_max = 8
 
     # parameters in the fit
-    expected_dipole_amp = 0.0052
-    log_excess = -5 #np.log10(3e-5)
+    expected_dipole_amp = 0.0074
+    log_excess = -30 #np.log10(3e-5)
         # I did a hacky thing where if the input log_excess < -20, it gets set to exactly zero
 
     # priors
     dipole_amp_bounds = (0., 3. * expected_dipole_amp)
-    log_excess_bounds = (-8, 5)
+    log_excess_bounds = (-20, 16)
     
     # other parameters for constructing the fake observation
-    base_rate = 33.6330  # mean base rate of the final 100 accepted samples for Quaia, 14 generations
+    # base_rate = 33.6330  # mean base rate of the final 100 accepted samples for Quaia, 14 generations
+    base_rate = 77.4495 # mean base rate of the final 100 accepted samples for CatWISE, 13 generations
     poisson = True     # whether to include shot noise
     selfunc_str = 'ones'
     selfunc = gm.get_selfunc_map(selfunc_str, nside=nside, blim=blim) #np.ones(hp.nside2npix(nside))
 
     population_size = 500
     minimum_epsilon = 1e-8
-    ngens = 14
+    ngens = 15
 
     continue_run = False     # continue a run where we left off, if one exists but stopped (probably due to time limit issues?)
 
     """ FAKE DATA """
-    data_pars = dict(dipole_amp=expected_dipole_amp, log_excess=log_excess)
+    data_pars = dict(dipole_amp=0., log_excess=log_excess) # !! dipole_amp = 0.
 
     # expected dipole direction
     cmb_dipdir = SkyCoord(264, 48, unit=u.deg, frame='galactic')
@@ -57,14 +58,14 @@ def main():
     # (theta, phi) in each healpixel
     theta, phi = hp.pix2ang(nside, ipix=np.arange(hp.nside2npix(nside)))
 
-    # orthogonal dipole comps (not alms: this is a 3-vector in (x,y,z) with norm dipole_amp)
-    print(f"excess dipole amplitude = {tools.D_from_C1(10**log_excess):.5f}", flush=True)
-    dipole_comps = tools.spherical_to_cartesian(r=tools.D_from_C1(10**log_excess),
-                                        theta=np.pi/2-cmb_dipdir.icrs.dec.rad,
-                                        phi=cmb_dipdir.icrs.ra.rad)
-    excess_dipole_comps = dipole_comps
-    # and add to data pars dict
-    data_pars['excess_dipole_comps'] = excess_dipole_comps
+    # # orthogonal dipole comps (not alms: this is a 3-vector in (x,y,z) with norm dipole_amp)
+    # print(f"excess dipole amplitude = {tools.D_from_C1(10**log_excess):.5f}", flush=True)
+    # dipole_comps = tools.spherical_to_cartesian(r=tools.D_from_C1(10**log_excess),
+    #                                     theta=np.pi/2-cmb_dipdir.icrs.dec.rad,
+    #                                     phi=cmb_dipdir.icrs.ra.rad)
+    # excess_dipole_comps = dipole_comps
+    # # and add to data pars dict
+    # data_pars['excess_dipole_comps'] = excess_dipole_comps
 
     # # antiparallel dipole amps
     # anti_comps = -comps
@@ -74,8 +75,8 @@ def main():
     # # perpendicular dipole amps
 
     # generate the data using the same model as the mocks
-    data = model(data_pars, selfunc, base_rate, cmb_dipdir, theta, phi, ell_max, poisson=poisson, return_alms=True,
-                excess_dipole_comps=excess_dipole_comps)
+    data = model(data_pars, selfunc, base_rate, cmb_dipdir, theta, phi, ell_max, poisson=poisson, return_alms=True)
+                # excess_dipole_comps=excess_dipole_comps)
 
     # where to store results
     excess_tag = f"_no_excess" if data_pars['log_excess'] < -20 else f"_excess-1e{data_pars['log_excess']:.1f}" # !
@@ -83,7 +84,7 @@ def main():
     if poisson == False:
         case_name += "_no-SN"
     # # !!
-    case_name += "_parallel-excess-dipole"
+    case_name += "_shot-noise-only"
     today = datetime.now().strftime("%Y-%m-%d")
     save_dir = os.path.join(RESULTDIR, 'results/ABC', 'fake_data', case_name,
                             f'{population_size}mocks_{ngens}gens_{today}')
@@ -248,6 +249,8 @@ def model(parameters, selfunc, base_rate, dipdir, theta, phi, ell_max=8, poisson
             excess_map += excess_map_
         else:
             excess_map += hp.sphtfunc.synfast(Cells, nside)
+    else:
+        alms = np.zeros(np.sum([2 * ell + 1 for ell in range(ell_max + 1)]))
 
     # smooth overdensity map
     smooth_overdensity_map = expected_dipole_map + excess_map
