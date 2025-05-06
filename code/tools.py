@@ -241,9 +241,14 @@ ABC
 def get_kde_1d(history, prior, parameter):
 
     df, w = history if type(history) == list else history.get_distribution()
-    return pyabc.visualization.kde.kde_1d(pd.concat((df[parameter],), axis=1), w, df[parameter].name,
-                           xmin=prior[parameter][0],
-                           xmax=prior[parameter][0] + prior[parameter][1])
+    try:
+        return pyabc.visualization.kde.kde_1d(pd.concat((df[parameter],), axis=1), w, df[parameter].name,
+                            xmin=prior[parameter].args[0],
+                            xmax=prior[parameter].args[0] + prior[parameter].args[1])
+    except:     # what error with args? something about RV object not being subscriptable
+        return pyabc.visualization.kde.kde_1d(pd.concat((df[parameter],), axis=1), w, df[parameter].name,
+                            xmin=prior[parameter][0],
+                            xmax=prior[parameter][0] + prior[parameter][1])
 
 
 def get_kde_2d(history, prior, parameter1, parameter2):
