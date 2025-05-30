@@ -104,6 +104,34 @@ def generate_noise_map(mu, nside):
     return np.random.poisson(mu, hp.nside2npix(int(nside))).astype(float)
 
 
+def remove_masked_sources(tab, masks):
+    """
+    Removes any sources in `tab` which fall into a masked pixel, provided by `masks`.
+
+    Parameters
+    ----------
+    `tab` : astropy table with 'ra' and 'dec' columns (in deg)
+    `masks` : list of length NPIX with zeros in the masked pixel
+
+    Returns
+    -------
+    `masked_tab` : identical to input `tab` but with rows corresponding to masked sources removed
+    
+    """
+
+    nside = hp.npix2nside(len(masks))
+    
+    # get the pixel indices of each source in the table
+    ra, dec = tab['ra'], tab['dec']
+    ipix = hp.ang2pix(nside, ra, dec, lonlat=True)
+    
+    # make a new table
+    imasked = np.array([masks[i] == 0 for i in ipix]).astype(bool) # kinda gross, would love to do this as arrays
+    masked_tab = tab[~imasked]
+
+    return masked_tab
+
+
 """
 LINEAR LEAST-SQUARES FIT
 """
@@ -254,21 +282,34 @@ def get_kde_1d(history, prior, parameter):
 def get_kde_2d(history, prior, parameter1, parameter2):
 
     df, w = history if type(history) == list else history.get_distribution()
-    return pyabc.visualization.kde.kde_2d(pd.concat((df[parameter1], df[parameter2]), axis=1), w, df[parameter1].name, df[parameter2].name,
-                            xmin=prior[parameter1][0],
-                            xmax=prior[parameter1][0] + prior[parameter1][1],
-                            ymin=prior[parameter2][0],
-                            ymax=prior[parameter2][0] + prior[parameter2][1])
+    try:
+        return pyabc.visualization.kde.kde_2d(pd.concat((df[parameter1], df[parameter2]), axis=1), w, df[parameter1].name, df[parameter2].name,
+                                xmin=prior[parameter1][0],
+                                xmax=prior[parameter1][0] + prior[parameter1][1],
+                                ymin=prior[parameter2][0],
+                                ymax=prior[parameter2][0] + prior[parameter2][1])
+    except:
+        return pyabc.visualization.kde.kde_2d(pd.concat((df[parameter1], df[parameter2]), axis=1), w, df[parameter1].name, df[parameter2].name,
+                                xmin=prior[parameter1].args[0],
+                                xmax=prior[parameter1].args[0] + prior[parameter1].args[1],
+                                ymin=prior[parameter2].args[0],
+                                ymax=prior[parameter2].args[0] + prior[parameter2].args[1])
 
 
 def scatter(history, prior, parameter1, parameter2, ax, **kwargs):
 
     df, w = history if type(history) == list else history.get_distribution()
     ax.scatter(df[parameter1], df[parameter2], **kwargs)
-    ax.set_xlim(prior[parameter1][0],
-                prior[parameter1][0] + prior[parameter1][1])
-    ax.set_ylim(prior[parameter2][0],
-                prior[parameter2][0] + prior[parameter2][1])
+    try:
+        ax.set_xlim(prior[parameter1][0],
+                    prior[parameter1][0] + prior[parameter1][1])
+        ax.set_ylim(prior[parameter2][0],
+                    prior[parameter2][0] + prior[parameter2][1])
+    except:
+        ax.set_xlim(prior[parameter1].args[0],
+                    prior[parameter1].args[0] + prior[parameter1].args[1])
+        ax.set_ylim(prior[parameter2].args[0],
+                    prior[parameter2].args[0] + prior[parameter2].args[1])
 
 
 def plot_posterior(history, prior, title=None, true_dipamp=0.0052, true_log_excess=None):
