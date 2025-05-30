@@ -26,9 +26,9 @@ def main():
     - "dipole_only" : one free parameter, dipole amplitude (fixed dir.)
     - "dipole_excess_free-base" : three free parameters, dipole amplitude (fixed dir.), log excess power, and base rate
     """
-    model = 'dipole_only'
+    model = 'dipole_excess'
 
-    catname = 'catwise'
+    catname = 'quaia_G20.5'
 
     distance_nside = 2
     nside = 64
@@ -80,7 +80,7 @@ def run_abc(catname, model, distance_nside, population_size, ngens,
     # bounds for prior: these are the same for all catalogs aside from the dependence on expected dipole amp and base rate
     #   note that these bounds are not necessarily used if the corresponding parameter is fixed in the model.
     #   first is lower bound, second entry is WIDTH (not upper bound)
-    dipole_amp_bounds = (-1. * catalog_info['expected_dipole_amp'], 4 * catalog_info['expected_dipole_amp'])
+    dipole_amp_bounds = (-1. * catalog_info['expected_dipole_amp'], 5 * catalog_info['expected_dipole_amp'])
     log_excess_bounds = (-10, 7)
     base_rate_bounds = (catalog_info['base_rate'] - 10, 20)
 
@@ -167,11 +167,16 @@ def get_catalog_info(catname):
         expected_dipole_amp = 0.0052
         base_rate = 33.6330 # mean base rate of the final 100 accepted samples for Quaia, 14 generations
     
+    elif catname == 'quaia_G20.0_orig':
+        fn_cat = os.path.join(RESULTDIR, f'data/catalogs/quaia/quaia_G20.0.fits')
+        selfunc_str = 'quaia_G20.0_orig'
+        expected_dipole_amp = 0.0052
+        base_rate = 33.6330 # mean base rate of the final 100 accepted samples for Quaia, 14 generations
+
     elif catname == 'quaia_G20.5':
-        assert False, "need to calculate expected dipole amp"
         fn_cat = os.path.join(RESULTDIR, f'data/catalogs/quaia/{catname}.fits')
         selfunc_str = f'quaia_G20.5_orig'
-        expected_dipole_amp = 0.0052 # !!!
+        expected_dipole_amp = 0.0047
         base_rate = 41.356  # mean of (selfunc corrected) unmasked pixels in G<20.5 with 'quaia_G20.5_orig'
 
     elif catname == 'quaia_G20.0_zsplit2bin0':
@@ -189,6 +194,12 @@ def get_catalog_info(catname):
     elif catname == 'catwise':
         fn_cat = os.path.join(RESULTDIR, f'data/catalogs/catwise_agns/catwise_agns_master.fits')
         selfunc_str = 'catwise_zodi'
+        expected_dipole_amp = 0.0074
+        base_rate = 77.4495 # mean base rate of the final 100 accepted samples for CatWISE, 13 generations
+
+    elif catname == 'catwise_elatcorr':
+        fn_cat = os.path.join(RESULTDIR, f'data/catalogs/catwise_agns/catwise_agns_master.fits')
+        selfunc_str = 'catwise_elatcorr'
         expected_dipole_amp = 0.0074
         base_rate = 77.4495 # mean base rate of the final 100 accepted samples for CatWISE, 13 generations
 
