@@ -6,6 +6,4 @@
 *.csv
 .vscode
 notebooks/.ipynb_checkpoints/
-data/
-results/
-figures/
+catalogs/
