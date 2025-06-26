@@ -14,20 +14,16 @@ import tools
 import dipole
 import multipoles
 import generate_mocks as gm
-from abc_for_qso import get_catalog_info, distance, save_accepted_mocks, model_dipole_only, model_dipole_excess
+from abc_for_qso import get_catalog_info, distance, save_accepted_mocks, model_dipole_excess
+from abc_free_dipole import model_free_dipole, model_free_dipole_excess
 
 RESULTDIR = '/scratch/aew492/lss-dipoles_results'
 
 def main():
 
     """ MAIN INPUTS """
-    """
-    Which model are we using? Options are:
-    - "dipole_excess" : two free parameters, dipole amplitude (fixed dir.) and log excess power
-    - "dipole_only" : one free parameter, dipole amplitude (fixed dir.)
-    - "dipole_excess_free-base" : three free parameters, dipole amplitude (fixed dir.), log excess power, and base rate
-    """
-    model = 'dipole_excess'
+
+    model = 'free_dipole_excess'
 
     catname = 'quaia_G20.0'
 
@@ -37,7 +33,7 @@ def main():
     # fake data parameters
     data_dipole_amp = catalog_info['expected_dipole_amp']
     data_log_excess = -4
-    base_rate = 80. #catalog_info['base_rate']
+    base_rate = catalog_info['base_rate']
 
     distance_nside = 2
     nside = 64
@@ -45,22 +41,22 @@ def main():
 
     population_size = 500
     minimum_epsilon = 1e-10
-    ngens = 6
+    ngens = 10
 
     ell_max_data = 2     # used to inject any excess power into the fake data
     ell_max_abc = 2                 # used in the ABC only if 'excess' in model
 
-    selfunc = True     # use the catalog's selfunc? if False, uses 'ones' i.e. perfect completeness
+    selfunc = False     # use the catalog's selfunc? if False, uses 'ones' i.e. perfect completeness
 
     # include shot noise?
-    poisson_data = True
-    poisson_abc = True
+    poisson_data = False
+    poisson_abc = False
 
     continue_run = True        # continue a run where we left off, if one exists but stopped (probably due to time limit issues)
 
     # check if we've already started a run for this case
-    save_dir = fake_data_dir(catalog_info['selfunc_str'], base_rate, data_dipole_amp, data_log_excess,
-                                            catalog_info['expected_dipole_amp'], poisson=poisson_data, ell_max=ell_max_data, selfunc=selfunc)
+    save_dir = fake_data_dir(catalog_info['selfunc_str'], base_rate, data_dipole_amp, data_log_excess, catalog_info['expected_dipole_amp'],
+                                poisson=poisson_data, ell_max=ell_max_data, selfunc=selfunc)
     data_fn = os.path.join(save_dir, f'fake_data.npy')
     if continue_run == True and os.path.exists(data_fn):
         print(f"loading data from a previous run")
@@ -84,7 +80,8 @@ def main():
             continue_run=continue_run_)
 
 
-def generate_fake_data(catname, dipole_amp, log_excess, base_rate, nside=64, blim=30, ell_max=8, poisson=True, selfunc=True):
+def generate_fake_data(catname, dipole_amp, log_excess, base_rate, nside=64, blim=30, ell_max=8,
+                        poisson=True, selfunc=True):
 
     data_pars = dict(dipole_amp=dipole_amp, log_excess=log_excess)
 
@@ -126,7 +123,7 @@ def generate_fake_data(catname, dipole_amp, log_excess, base_rate, nside=64, bli
 def run_abc(fake_data_dict, fake_data_dir, model, distance_nside, population_size, ngens,
             minimum_epsilon=1e-10, nside=64, blim=30, ell_max=8, poisson=True, continue_run=True):
 
-    assert model.lower() in ['dipole_excess', 'dipole_only', 'dipole_excess_free-base'], "unknown model name"
+    assert model.lower() in ['free_dipole', 'free_dipole_excess'], "unknown model name"
     model = model.lower()
 
     """ DATA & SELECTION FUNCTION """
@@ -135,74 +132,56 @@ def run_abc(fake_data_dict, fake_data_dir, model, distance_nside, population_siz
     selfunc = fake_data_dict['selfunc']
     base_rate = fake_data_dict['base_rate']
     input_dipole_amp = fake_data_dict['input_dipole_amp']
-    input_log_excess = fake_data_dict['input_log_excess']
     odmap = fake_data_dict['odmap'] # the data overdensity map
     expected_dipole_amp = fake_data_dict['expected_dipole_amp']
-
-    # expected dipole direction
-    cmb_dipdir = SkyCoord(264, 48, unit=u.deg, frame='galactic')
 
     # (theta, phi) in each healpixel
     theta, phi = hp.pix2ang(nside, ipix=np.arange(hp.nside2npix(nside)))
 
     """ PRIOR """
-    # bounds for prior: these are the same for all catalogs aside from the dependence on expected dipole amp and base rate
-    #   note that these bounds are not necessarily used if the corresponding parameter is fixed in the model.
+    # bounds for prior:
     #   first is lower bound, second entry is WIDTH (not upper bound)
-    dipole_amp_bounds = (-1. * expected_dipole_amp, 5 * expected_dipole_amp)
-        # note these prior bounds are still based on the _expected_ amp, not necessarily the true amp in the data
-    log_excess_bounds = (-10, 7) #(-8, 5)
-    base_rate_bounds = (base_rate - 10, 20)
+    dipole_x_bounds = (-.01, .02)
+    dipole_y_bounds = (-.01, .02)
+    dipole_z_bounds = (-.01, .02)
+    log_excess_bounds = (-10, 7)        # only used if excess power is a free parameter in the model
 
     prior = {}
-    if 'dipole' in model:
-        prior['dipole_amp'] = pyabc.RV("uniform", *dipole_amp_bounds)
+    prior['dipole_x'] = pyabc.RV("uniform", *dipole_x_bounds)
+    prior['dipole_y'] = pyabc.RV("uniform", *dipole_y_bounds)
+    prior['dipole_z'] = pyabc.RV("uniform", *dipole_z_bounds)
     if 'excess' in model:
         prior['log_excess'] = pyabc.RV("uniform", *log_excess_bounds)
-    if 'base' in model:
-        prior['base_rate'] = pyabc.RV("uniform", *base_rate_bounds)
     
     prior_abc = pyabc.Distribution(prior)
 
     """ WRAPPERS """
-    # need these wrapper functions to match required format for pyabc ; selfunc and nside defined above
-    if model == 'dipole_excess':
+    if model == 'free_dipole':
         def model_wrapper(parameters):
-            return model_dipole_excess(parameters, selfunc, base_rate, cmb_dipdir, theta, phi,
-                                        ell_max=ell_max, poisson=poisson)
-
-    elif model == 'dipole_only':
-        def model_wrapper(parameters):
-            return model_dipole_only(parameters, selfunc, base_rate, cmb_dipdir, theta, phi,
-                                        poisson=poisson)
+            return model_free_dipole(parameters, selfunc, base_rate, theta, phi, poisson=poisson)
+    
     else:
-        assert False, "unknown model name"
+        assert model == 'free_dipole_excess'
+        def model_wrapper(parameters):
+            return model_free_dipole_excess(parameters, selfunc, base_rate, theta, phi, ell_max=ell_max, poisson=poisson)
 
     def distance_wrapper(x, x0):
         return distance(x, x0, distance_nside)
 
     """ SAVE DIRECTORY """
     # where to store results
-    if 'excess' in model and ell_max != 8:
-        ell_max_tag = f'_ellmax-{int(ell_max)}'
-    else:
-        ell_max_tag = ''
     noise_tag = f'_no-SN' if poisson == False else ''
     res_dir = os.path.join(fake_data_dir,
-                f'{model}_nside{distance_nside}_{population_size}mocks_{ngens}iters{ell_max_tag}')
-    # !! hacky: make a new directory specifying the different log excess prior
-    if log_excess_bounds != (-10, 7):
-        res_dir = os.path.join(res_dir, f'log-excess-bounds-{log_excess_bounds[0]}-{log_excess_bounds[1]}')
-    # !! trying a different alpha:
-    # alpha = 0.2
-    # res_dir = os.path.join(res_dir, f'QuantileEpsilon_alpha-{alpha}')
+                f'{model}_nside{distance_nside}_{population_size}mocks_{ngens}iters')
+    # # !! trying a different epsilon:
+    # res_dir = os.path.join(res_dir, f'QuantileEpsilon_alpha-0.2')
     if not os.path.exists(res_dir):
         os.makedirs(res_dir)
 
     """ PERFORM THE INFERENCE """
     abc = pyabc.ABCSMC(model_wrapper, prior_abc, distance_wrapper, population_size=population_size)
                         # eps=pyabc.SilkOptimalEpsilon(k=10)) # !!
-                        # eps=pyabc.QuantileEpsilon(alpha=alpha))
+                        # eps=pyabc.QuantileEpsilon(alpha=0.2))
 
     # store the history at this tempfile
     db_path = os.path.join(tempfile.gettempdir(), res_dir, f'history.db')
@@ -236,11 +215,6 @@ def run_abc(fake_data_dict, fake_data_dir, model, distance_nside, population_siz
         'old_posteriors' : [history.get_distribution(t=t) for t in range(history.max_t + 1)],
         'fake_data_dict' : fake_data_dict,
     }
-    # model-specific info
-    if 'excess' in model:
-        res['ell_max'] = ell_max
-    if 'base' not in model:
-        res['base_rate'] = base_rate
 
     np.save(os.path.join(res_dir, f'results.npy'), res)
     print(f"history saved at {res_dir}", flush=True)
@@ -255,7 +229,7 @@ def fake_data_dir(catname_, base_rate, input_dipole_amp, input_log_excess, expec
     dipamp_tag = f'_dipamp-{input_dipole_amp / expected_dipole_amp:.1f}x'
     excess_tag = f'_excess-zero' if input_log_excess < -20 else f'_excess-{input_log_excess:.1f}'
     noise_tag = f'_no-SN' if poisson == False else ''
-    ell_max_tag = '' if ell_max == 8 or input_log_excess < -20 else f'_ellmax-{int(ell_max)}'
+    ell_max_tag = '' if ell_max == 8 else f'_ellmax-{int(ell_max)}'
     selfunc_tag = '' if selfunc else '_sf-ones'
     save_dir = os.path.join(RESULTDIR, 'results/ABC/fake_data',  # same as the real data case except now in the extra fake_data/ dir.
                         catname_ + f'_base-rate-{base_rate:.4f}{dipamp_tag}{excess_tag}{noise_tag}{ell_max_tag}{selfunc_tag}')
