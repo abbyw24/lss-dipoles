@@ -63,8 +63,11 @@ def mollview(map, coord=['C'], graticule=True, graticule_coord=None, graticule_l
         gratcoord = graticule_coord if graticule_coord else None
         hp.graticule(coord=gratcoord)
 
-def plot_marker(lon, lat, **kwargs):
-    theta, phi = lonlat_to_thetaphi(lon, lat)
+def plot_marker(lon, lat, unit='deg', **kwargs):
+    if unit == 'rad':
+        theta, phi = Angle(lat, unit='rad'), Angle(lon, unit='rad')
+    else:
+        theta, phi = lonlat_to_thetaphi(lon, lat)
     hp.newprojplot(theta, phi.wrap_at(np.pi * u.rad), **kwargs)
 
 def label_coord(coordsysstr, ax=None, fs=14):
@@ -201,9 +204,6 @@ DIPOLE-Y THINGS
 """
 def dipole_dir_to_comps(direction):
     return hp.dir2vec(np.pi/2 - direction.dec.rad, direction.ra.rad)
-
-def dipole_comps_to_dir(comps):
-    return hp.vec2dir()
 
 def a1ms_to_dipole_comps(a1ms):
     """
