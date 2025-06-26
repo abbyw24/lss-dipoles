@@ -28,7 +28,7 @@ def main():
     """
     model = 'dipole_excess'
 
-    catname = 'quaia_G20.5'
+    catname = 'quaia_G20.0_zsplit2bin1'
 
     distance_nside = 2
     nside = 64
@@ -264,7 +264,7 @@ def distance(x, x0, nside):
 MODELS
 """
 
-def model_dipole_excess(parameters, selfunc, base_rate, dipdir, theta, phi, ell_max=8, poisson=True):
+def model_dipole_excess(parameters, selfunc, base_rate, dipdir, theta, phi, ell_max=8, poisson=True, return_alms=False):
     """
     Generates a healpix density map with dipole in fixed CMB dipole direction and excess angular power.
 
@@ -298,10 +298,11 @@ def model_dipole_excess(parameters, selfunc, base_rate, dipdir, theta, phi, ell_
     # Cells: flat, determined by input log_excess
     if parameters["log_excess"] < -20:  # magic, kind of hacky but I want a way to have literally zero excess power
         excess_map = np.zeros_like(expected_dipole_map)
+        alms = np.zeros(np.sum([2 * ell + 1 for ell in range(ell_max + 1)]))
     else:
-        Cells = np.zeros(ell_max)
+        Cells = np.zeros(ell_max + 1)
         Cells[1:] += 10**parameters["log_excess"]   # because we don't want excess power in the monopole
-        excess_map = hp.sphtfunc.synfast(Cells, nside)
+        excess_map, alms = hp.sphtfunc.synfast(Cells, nside, alm=True)
 
     # smooth overdensity map
     smooth_overdensity_map = expected_dipole_map + excess_map
@@ -312,10 +313,13 @@ def model_dipole_excess(parameters, selfunc, base_rate, dipdir, theta, phi, ell_
         rng = np.random.default_rng(seed=None) # should I put a seed in here??
         number_map = rng.poisson(number_map)
 
-    return { "data" : number_map }
+    if return_alms:
+        return { "data" : number_map, "alms" : alms}
+    else:
+        return { "data" : number_map }
 
 
-def model_dipole_only(parameters, selfunc, base_rate, dipdir, theta, phi, ell_max=8, poisson=True):
+def model_dipole_only(parameters, selfunc, base_rate, dipdir, theta, phi, poisson=True):
     """
     Generates a healpix density map with dipole in fixed CMB dipole direction.
 
@@ -390,7 +394,7 @@ def model_dipole_excess_base(parameters, selfunc, dipdir, theta, phi, ell_max=8,
     if parameters["log_excess"] < -20:  # magic, kind of hacky but I want a way to have literally zero excess power
         excess_map = np.zeros_like(expected_dipole_map)
     else:
-        Cells = np.zeros(ell_max)
+        Cells = np.zeros(ell_max + 1)
         Cells[1:] += 10**parameters["log_excess"]   # because we don't want excess power in the monopole
         excess_map = hp.sphtfunc.synfast(Cells, nside)
 
