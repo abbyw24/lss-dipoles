@@ -170,9 +170,13 @@ def run_abc(fake_data_dict, fake_data_dir, model, distance_nside, population_siz
 
     """ SAVE DIRECTORY """
     # where to store results
+    if 'excess' in model and ell_max != 8:
+        ell_max_tag = f'_ellmax-{int(ell_max)}'
+    else:
+        ell_max_tag = ''
     noise_tag = f'_no-SN' if poisson == False else ''
     res_dir = os.path.join(fake_data_dir,
-                f'{model}_nside{distance_nside}_{population_size}mocks_{ngens}iters')
+                f'{model}_nside{distance_nside}_{population_size}mocks_{ngens}iters{noise_tag}{ell_max_tag}')
     # # !! trying a different epsilon:
     # res_dir = os.path.join(res_dir, f'QuantileEpsilon_alpha-0.2')
     if not os.path.exists(res_dir):
