@@ -26,9 +26,9 @@ def main():
     - "dipole_only" : one free parameter, dipole amplitude (fixed dir.)
     - "dipole_excess_free-base" : three free parameters, dipole amplitude (fixed dir.), log excess power, and base rate
     """
-    model = 'dipole_excess'
+    model = 'dipole_excess_free-base'
 
-    catname = 'quaia_G20.0_zsplit2bin1'
+    catname = 'quaia_G20.5'
 
     distance_nside = 2
     nside = 64
@@ -36,7 +36,7 @@ def main():
 
     population_size = 500
     minimum_epsilon = 1e-10
-    ngens = 18
+    ngens = 10
 
     ell_max = 8     # only used if 'excess' is in model
 
@@ -62,6 +62,9 @@ def run_abc(catname, model, distance_nside, population_size, ngens,
     base_rate_tag = '' if 'base' in model else f'_base-rate-{catalog_info["base_rate"]:.4f}'
     save_dir = os.path.join(RESULTDIR, 'results/ABC',
                             f'{catname_}_{model}_nside{distance_nside}_{population_size}mocks_{ngens}iters{base_rate_tag}')
+    # # !! trying a different alpha:
+    # alpha = 0.2
+    # save_dir = os.path.join(save_dir, f'QuantileEpsilon_alpha-{alpha}')
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
 
@@ -114,6 +117,7 @@ def run_abc(catname, model, distance_nside, population_size, ngens,
 
     """ PERFORM THE INFERENCE """
     abc = pyabc.ABCSMC(model_wrapper, prior_abc, distance_wrapper, population_size=population_size)
+                        # eps=pyabc.QuantileEpsilon(alpha=alpha))
 
     # store the history at this tempfile
     db_path = os.path.join(tempfile.gettempdir(), save_dir, f'history.db')
@@ -174,6 +178,12 @@ def get_catalog_info(catname):
         base_rate = 33.6330 # mean base rate of the final 100 accepted samples for Quaia, 14 generations
 
     elif catname == 'quaia_G20.5':
+        fn_cat = os.path.join(RESULTDIR, f'data/catalogs/quaia/{catname}.fits')
+        selfunc_str = f'quaia_G20.5_zodi'
+        expected_dipole_amp = 0.0047
+        base_rate = 41.356  # mean of (selfunc corrected) unmasked pixels in G<20.5 with 'quaia_G20.5_orig'
+
+    elif catname == 'quaia_G20.5_orig':
         fn_cat = os.path.join(RESULTDIR, f'data/catalogs/quaia/{catname}.fits')
         selfunc_str = f'quaia_G20.5_orig'
         expected_dipole_amp = 0.0047
@@ -264,7 +274,9 @@ def distance(x, x0, nside):
 MODELS
 """
 
-def model_dipole_excess(parameters, selfunc, base_rate, dipdir, theta, phi, ell_max=8, poisson=True, return_alms=False):
+def model_dipole_excess(parameters, selfunc, base_rate, dipdir, theta, phi,
+                        ell_max=8, poisson=True, return_alms=False,
+                        strict_excess=False, log_tol=0.01):
     """
     Generates a healpix density map with dipole in fixed CMB dipole direction and excess angular power.
 
@@ -277,7 +289,25 @@ def model_dipole_excess(parameters, selfunc, base_rate, dipdir, theta, phi, ell_
     selfunc : ndarray
         Selection function map. The map is generated with the same npix.
     base_rate : float
-        Base rate (used to be a parameter, now hard-coded).
+        Base rate (hard-coded rather than a free parameter).
+    dipdir : astropy.coordinates.SkyCoord object
+        Dipole direction.
+    theta : array-like
+        "theta" angles of each healpixel. Must have length npix.
+    phi : array-like
+        "phi" angles of each healpixel. Must have length npix.
+    ell_max : int, optional
+        Maximum multipole at which to inject any excess power.
+    poisson : bool, optional
+        Whether to add shot noise to the final generated map. Default is True.
+    return_alms : bool, optional
+        Whether to return the spherical harmonic coefficients, alms, from the excess power draw. Default is False.
+    strict_excess : bool, optional
+        Whether to be strict about the actual mean excess power (across ells) in the generated map.
+        If True, `synfast` will be recalled until `abs(log10(mean(Cells[1:])) - parameters["log_excess"]) < log_tol`.
+    log_tol : float, optional
+        Tolerance in log10 space between the input excess power and the true excess power generated in the map.
+        Only used if `strict_excess == True`.
 
     Returns
     -------
@@ -302,7 +332,31 @@ def model_dipole_excess(parameters, selfunc, base_rate, dipdir, theta, phi, ell_
     else:
         Cells = np.zeros(ell_max + 1)
         Cells[1:] += 10**parameters["log_excess"]   # because we don't want excess power in the monopole
-        excess_map, alms = hp.sphtfunc.synfast(Cells, nside, alm=True)
+
+        if strict_excess:
+            print(f"requiring strict excess...", end='\r')
+            i = 0
+            while True:
+                # construct the map using synfast
+                excess_map, alms = hp.sphtfunc.synfast(Cells, nside, alm=True)
+                
+                # compute the excess power in the map
+                ells, Cells_excess = multipoles.compute_Cells_in_overdensity_map_Lambda(excess_map,
+                                                                    Lambda=0.,
+                                                                    max_ell=ell_max, # magic
+                                                                    selfunc=np.ones_like(excess_map)) # because this is the true input, perfect completeness
+                # compute the mean power across ells, and compare to the input
+                diff = np.log10(np.mean(Cells_excess[1:])) - parameters["log_excess"]
+                
+                # if the mean power (across ells) is within the tolerance, break. otherwise, redraw using synfast
+                if np.abs(diff) < log_tol:
+                    break
+                else:
+                    i += 1
+            print(f"requiring strict excess... generated correct excess power with {i+1} draws")
+        else:
+            # if strict_excess == False, just generate a map with the input Cells and take whatever the output is
+            excess_map, alms = hp.sphtfunc.synfast(Cells, nside, alm=True)
 
     # smooth overdensity map
     smooth_overdensity_map = expected_dipole_map + excess_map
