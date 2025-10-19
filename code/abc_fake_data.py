@@ -29,15 +29,15 @@ def main():
     """
     model = 'dipole_excess'
 
-    catname = 'quaia_G20.0'
+    catname = 'catwise'
 
     # which catalog are we trying to emulate? get the info here if we want the expected dipole amp
     catalog_info = get_catalog_info(catname)
 
     # fake data parameters
     data_dipole_amp = catalog_info['expected_dipole_amp']
-    data_log_excess = -4
-    base_rate = 80. #catalog_info['base_rate']
+    data_log_excess = -4.4
+    base_rate = catalog_info['base_rate']
 
     distance_nside = 2
     nside = 64
@@ -45,7 +45,8 @@ def main():
 
     population_size = 500
     minimum_epsilon = 1e-10
-    ngens = 6
+    ngens = 8
+    alpha = 0.15        # if we're using QuantileEpsilon()
 
     ell_max_data = 2     # used to inject any excess power into the fake data
     ell_max_abc = 2                 # used in the ABC only if 'excess' in model
@@ -56,9 +57,14 @@ def main():
     poisson_data = True
     poisson_abc = True
 
+    # strict tolerance on the true excess power in the generated *fake data* map?
+    #   (note that this only applies to the fake data generation; `synfast` is still only called once per ABC mock generation)
+    strict_excess = True
+    log_tol = 0.01
+
     continue_run = True        # continue a run where we left off, if one exists but stopped (probably due to time limit issues)
 
-    # check if we've already started a run for this case
+    # check if we've already started a run for this data
     save_dir = fake_data_dir(catalog_info['selfunc_str'], base_rate, data_dipole_amp, data_log_excess,
                                             catalog_info['expected_dipole_amp'], poisson=poisson_data, ell_max=ell_max_data, selfunc=selfunc)
     data_fn = os.path.join(save_dir, f'fake_data.npy')
@@ -70,7 +76,8 @@ def main():
         print(f"generating new fake data")
         # generate fake data
         fake_data_dict = generate_fake_data(catname, data_dipole_amp, data_log_excess, base_rate,
-                                            ell_max=ell_max_data, poisson=poisson_data, selfunc=selfunc)
+                                            ell_max=ell_max_data, poisson=poisson_data, selfunc=selfunc,
+                                            strict_excess=strict_excess, log_tol=log_tol)
         # save the fake data here in case we need to continue the run later (otherwise a continued run would generate new fake data!)
         if not os.path.exists(save_dir):
             os.makedirs(save_dir)
@@ -81,10 +88,12 @@ def main():
     #   saves the posteriors, history, and the accepted maps from the final generation
     run_abc(fake_data_dict, save_dir, model, distance_nside, population_size, ngens,
             minimum_epsilon=minimum_epsilon, nside=nside, blim=blim, ell_max=ell_max_abc, poisson=poisson_abc,
-            continue_run=continue_run_)
+            continue_run=continue_run_, alpha=alpha)
 
 
-def generate_fake_data(catname, dipole_amp, log_excess, base_rate, nside=64, blim=30, ell_max=8, poisson=True, selfunc=True):
+def generate_fake_data(catname, dipole_amp, log_excess, base_rate,
+                        nside=64, blim=30, ell_max=8, poisson=True, selfunc=True,
+                        strict_excess=False, log_tol=0.01):
 
     data_pars = dict(dipole_amp=dipole_amp, log_excess=log_excess)
 
@@ -103,7 +112,7 @@ def generate_fake_data(catname, dipole_amp, log_excess, base_rate, nside=64, bli
 
     # call the model
     data = model_dipole_excess(data_pars, selfunc, base_rate, cmb_dipdir, theta, phi, ell_max,
-                                poisson=poisson, return_alms=True)
+                                poisson=poisson, return_alms=True, strict_excess=strict_excess, log_tol=log_tol)
 
     # convert to overdensity
     odmap = data['data'] / np.nanmean(data['data']) - 1.
@@ -119,12 +128,14 @@ def generate_fake_data(catname, dipole_amp, log_excess, base_rate, nside=64, bli
         'input_dipole_amp' : dipole_amp,
         'input_log_excess' : log_excess,
         'base_rate' : base_rate,
-        'poisson' : poisson
+        'poisson' : poisson,
+        'strict_excess' : strict_excess,
+        'log_tol' : log_tol
     }
     return fake_data_dict
 
 def run_abc(fake_data_dict, fake_data_dir, model, distance_nside, population_size, ngens,
-            minimum_epsilon=1e-10, nside=64, blim=30, ell_max=8, poisson=True, continue_run=True):
+            minimum_epsilon=1e-10, nside=64, blim=30, ell_max=8, poisson=True, continue_run=True, alpha=0.15):
 
     assert model.lower() in ['dipole_excess', 'dipole_only', 'dipole_excess_free-base'], "unknown model name"
     model = model.lower()
@@ -189,20 +200,20 @@ def run_abc(fake_data_dict, fake_data_dir, model, distance_nside, population_siz
         ell_max_tag = ''
     noise_tag = f'_no-SN' if poisson == False else ''
     res_dir = os.path.join(fake_data_dir,
-                f'{model}_nside{distance_nside}_{population_size}mocks_{ngens}iters{ell_max_tag}')
+                f'{model}_nside{distance_nside}_{population_size}mocks_{ngens}iters{noise_tag}{ell_max_tag}')
     # !! hacky: make a new directory specifying the different log excess prior
     if log_excess_bounds != (-10, 7):
         res_dir = os.path.join(res_dir, f'log-excess-bounds-{log_excess_bounds[0]}-{log_excess_bounds[1]}')
-    # !! trying a different alpha:
-    # alpha = 0.2
-    # res_dir = os.path.join(res_dir, f'QuantileEpsilon_alpha-{alpha}')
+    res_dir = os.path.join(res_dir, f'QuantileEpsilon_alpha-{alpha}')
+    # k = 10
+    # res_dir = os.path.join(res_dir, f'SilkOptimalEpsilon_k-{k}')
     if not os.path.exists(res_dir):
         os.makedirs(res_dir)
 
     """ PERFORM THE INFERENCE """
-    abc = pyabc.ABCSMC(model_wrapper, prior_abc, distance_wrapper, population_size=population_size)
-                        # eps=pyabc.SilkOptimalEpsilon(k=10)) # !!
-                        # eps=pyabc.QuantileEpsilon(alpha=alpha))
+    abc = pyabc.ABCSMC(model_wrapper, prior_abc, distance_wrapper, population_size=population_size,
+                        # eps=pyabc.SilkOptimalEpsilon(k=k)) # !!
+                        eps=pyabc.QuantileEpsilon(alpha=alpha))
 
     # store the history at this tempfile
     db_path = os.path.join(tempfile.gettempdir(), res_dir, f'history.db')
