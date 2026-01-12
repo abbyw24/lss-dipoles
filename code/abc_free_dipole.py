@@ -22,7 +22,7 @@ def main():
 
     """ MAIN INPUTS """
 
-    catname = 'catwise_elatcorr'
+    catname = 'quaia_G20.0_zsplit2bin1'
 
     distance_nside = 2
     nside = 64
@@ -30,7 +30,7 @@ def main():
 
     population_size = 500
     minimum_epsilon = 1e-10
-    ngens = 18
+    ngens = 15
 
     continue_run = True        # continue a run where we left off, if one exists but stopped (probably due to time limit issues)
 
@@ -64,9 +64,9 @@ def run_abc(catname, distance_nside, population_size, ngens,
     """ PRIOR """
     # bounds for prior:
     #   first is lower bound, second entry is WIDTH (not upper bound)
-    dipole_x_bounds = (-.015, .03)
-    dipole_y_bounds = (-.015, .03)
-    dipole_z_bounds = (-.015, .03)
+    dipole_x_bounds = (-4. * catalog_info['expected_dipole_amp'], 8 * catalog_info['expected_dipole_amp'])
+    dipole_y_bounds = (-4. * catalog_info['expected_dipole_amp'], 8 * catalog_info['expected_dipole_amp'])
+    dipole_z_bounds = (-4. * catalog_info['expected_dipole_amp'], 8 * catalog_info['expected_dipole_amp'])
 
     prior = {}
     prior['dipole_x'] = pyabc.RV("uniform", *dipole_x_bounds)
