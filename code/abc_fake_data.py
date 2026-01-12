@@ -27,7 +27,7 @@ def main():
     - "dipole_only" : one free parameter, dipole amplitude (fixed dir.)
     - "dipole_excess_free-base" : three free parameters, dipole amplitude (fixed dir.), log excess power, and base rate
     """
-    model = 'dipole_excess'
+    model = 'dipole_only'
 
     catname = 'catwise'
 
@@ -36,7 +36,7 @@ def main():
 
     # fake data parameters
     data_dipole_amp = catalog_info['expected_dipole_amp']
-    data_log_excess = -4.4
+    data_log_excess = -30.
     base_rate = catalog_info['base_rate']
 
     distance_nside = 2
@@ -45,10 +45,10 @@ def main():
 
     population_size = 500
     minimum_epsilon = 1e-10
-    ngens = 8
-    alpha = 0.15        # if we're using QuantileEpsilon()
+    ngens = 18
+    alpha = 0.5        # if we're using QuantileEpsilon()
 
-    ell_max_data = 2     # used to inject any excess power into the fake data
+    ell_max_data = 8     # used to inject any excess power into the fake data
     ell_max_abc = 2                 # used in the ABC only if 'excess' in model
 
     selfunc = True     # use the catalog's selfunc? if False, uses 'ones' i.e. perfect completeness
@@ -62,7 +62,7 @@ def main():
     strict_excess = True
     log_tol = 0.01
 
-    continue_run = True        # continue a run where we left off, if one exists but stopped (probably due to time limit issues)
+    continue_run = False        # continue a run where we left off, if one exists but stopped (probably due to time limit issues)
 
     # check if we've already started a run for this data
     save_dir = fake_data_dir(catalog_info['selfunc_str'], base_rate, data_dipole_amp, data_log_excess,

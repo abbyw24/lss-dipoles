@@ -266,20 +266,20 @@ def filter_max_mocks(fns, max_mocks=None):
 """
 ABC
 """
-def get_kde_1d(history, prior, parameter):
+def get_kde_1d(history, prior, parameter, **kwargs):
 
     df, w = history if type(history) == list else history.get_distribution()
     try:
         return pyabc.visualization.kde.kde_1d(pd.concat((df[parameter],), axis=1), w, df[parameter].name,
                             xmin=prior[parameter].args[0],
-                            xmax=prior[parameter].args[0] + prior[parameter].args[1])
+                            xmax=prior[parameter].args[0] + prior[parameter].args[1], **kwargs)
     except:     # what error with args? something about RV object not being subscriptable
         return pyabc.visualization.kde.kde_1d(pd.concat((df[parameter],), axis=1), w, df[parameter].name,
                             xmin=prior[parameter][0],
-                            xmax=prior[parameter][0] + prior[parameter][1])
+                            xmax=prior[parameter][0] + prior[parameter][1], **kwargs)
 
 
-def get_kde_2d(history, prior, parameter1, parameter2):
+def get_kde_2d(history, prior, parameter1, parameter2, **kwargs):
 
     df, w = history if type(history) == list else history.get_distribution()
     try:
@@ -287,13 +287,13 @@ def get_kde_2d(history, prior, parameter1, parameter2):
                                 xmin=prior[parameter1][0],
                                 xmax=prior[parameter1][0] + prior[parameter1][1],
                                 ymin=prior[parameter2][0],
-                                ymax=prior[parameter2][0] + prior[parameter2][1])
+                                ymax=prior[parameter2][0] + prior[parameter2][1], **kwargs)
     except:
         return pyabc.visualization.kde.kde_2d(pd.concat((df[parameter1], df[parameter2]), axis=1), w, df[parameter1].name, df[parameter2].name,
                                 xmin=prior[parameter1].args[0],
                                 xmax=prior[parameter1].args[0] + prior[parameter1].args[1],
                                 ymin=prior[parameter2].args[0],
-                                ymax=prior[parameter2].args[0] + prior[parameter2].args[1])
+                                ymax=prior[parameter2].args[0] + prior[parameter2].args[1], **kwargs)
 
 
 def scatter(history, prior, parameter1, parameter2, ax, **kwargs):

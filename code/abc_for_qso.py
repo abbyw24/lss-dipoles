@@ -24,11 +24,11 @@ def main():
     Which model are we using? Options are:
     - "dipole_excess" : two free parameters, dipole amplitude (fixed dir.) and log excess power
     - "dipole_only" : one free parameter, dipole amplitude (fixed dir.)
-    - "dipole_excess_free-base" : three free parameters, dipole amplitude (fixed dir.), log excess power, and base rate
+    - "dipole_excess_base" : three free parameters, dipole amplitude (fixed dir.), log excess power, and base rate
     """
-    model = 'dipole_excess_free-base'
+    model = 'dipole_only'
 
-    catname = 'quaia_G20.5'
+    catname = 'catwise_orig'
 
     distance_nside = 2
     nside = 64
@@ -36,7 +36,7 @@ def main():
 
     population_size = 500
     minimum_epsilon = 1e-10
-    ngens = 10
+    ngens = 15
 
     ell_max = 8     # only used if 'excess' is in model
 
@@ -51,14 +51,14 @@ def main():
 def run_abc(catname, model, distance_nside, population_size, ngens,
             minimum_epsilon=1e-10, nside=64, blim=30, ell_max=8, continue_run=True):
 
-    assert model.lower() in ['dipole_excess', 'dipole_only', 'dipole_excess_free-base'], "unknown model name"
+    assert model.lower() in ['dipole_excess', 'dipole_only', 'dipole_excess_base', 'dipole_base'], "unknown model name"
     model = model.lower()
 
     """ DATA & SELECTION FUNCTION """
     catalog_info = get_catalog_info(catname)
 
     # where to store results
-    catname_ = catalog_info['selfunc_str']
+    catname_ = catname if catalog_info['selfunc_str'] == 'ones' else catalog_info['selfunc_str']
     base_rate_tag = '' if 'base' in model else f'_base-rate-{catalog_info["base_rate"]:.4f}'
     save_dir = os.path.join(RESULTDIR, 'results/ABC',
                             f'{catname_}_{model}_nside{distance_nside}_{population_size}mocks_{ngens}iters{base_rate_tag}')
@@ -83,7 +83,7 @@ def run_abc(catname, model, distance_nside, population_size, ngens,
     # bounds for prior: these are the same for all catalogs aside from the dependence on expected dipole amp and base rate
     #   note that these bounds are not necessarily used if the corresponding parameter is fixed in the model.
     #   first is lower bound, second entry is WIDTH (not upper bound)
-    dipole_amp_bounds = (-1. * catalog_info['expected_dipole_amp'], 5 * catalog_info['expected_dipole_amp'])
+    dipole_amp_bounds = (-1. * catalog_info['expected_dipole_amp'], 7 * catalog_info['expected_dipole_amp'])
     log_excess_bounds = (-10, 7)
     base_rate_bounds = (catalog_info['base_rate'] - 10, 20)
 
@@ -107,8 +107,12 @@ def run_abc(catname, model, distance_nside, population_size, ngens,
         def model_wrapper(parameters):
             return model_dipole_only(parameters, selfunc, catalog_info['base_rate'], cmb_dipdir, theta, phi)
 
+    elif model == 'dipole_base':
+        def model_wrapper(parameters):
+            return model_dipole_base(parameters, selfunc, cmb_dipdir, theta, phi)
+
     else:
-        assert model == 'dipole_excess_free-base'
+        assert model == 'dipole_excess_base'
         def model_wrapper(parameters):
             return model_dipole_excess_base(parameters, selfunc, cmb_dipdir, theta, phi)
 
@@ -163,53 +167,77 @@ def run_abc(catname, model, distance_nside, population_size, ngens,
     print(f"saved accepted mocks from final generation", flush=True)
 
 
-def get_catalog_info(catname):
+def get_catalog_info(catname, base_dir='/home/aew492/lss-dipoles'):
     # catalog-specific inputs
     if catname == 'quaia_G20.0':
-        fn_cat = os.path.join(RESULTDIR, f'data/catalogs/quaia/{catname}.fits')
+        fn_cat = os.path.join(base_dir, f'data/catalogs/quaia/{catname}_masked.npy')
         selfunc_str = 'quaia_G20.0_zodi'
         expected_dipole_amp = 0.0052
         base_rate = 33.6330 # mean base rate of the final 100 accepted samples for Quaia, 14 generations
     
     elif catname == 'quaia_G20.0_orig':
-        fn_cat = os.path.join(RESULTDIR, f'data/catalogs/quaia/quaia_G20.0.fits')
+        fn_cat = os.path.join(base_dir, f'data/catalogs/quaia/quaia_G20.0_masked.npy')
         selfunc_str = 'quaia_G20.0_orig'
         expected_dipole_amp = 0.0052
         base_rate = 33.6330 # mean base rate of the final 100 accepted samples for Quaia, 14 generations
 
+    elif catname == 'quaia_G20.0_nosf':
+        fn_cat = os.path.join(base_dir, f'data/catalogs/quaia/quaia_G20.0_masked.npy')
+        selfunc_str = 'ones'
+        expected_dipole_amp = 0.0052
+        base_rate = 33.6330 # mean base rate of the final 100 accepted samples for Quaia, 14 generations
+
     elif catname == 'quaia_G20.5':
-        fn_cat = os.path.join(RESULTDIR, f'data/catalogs/quaia/{catname}.fits')
+        fn_cat = os.path.join(base_dir, f'data/catalogs/quaia/{catname}_masked.npy')
         selfunc_str = f'quaia_G20.5_zodi'
         expected_dipole_amp = 0.0047
         base_rate = 41.356  # mean of (selfunc corrected) unmasked pixels in G<20.5 with 'quaia_G20.5_orig'
 
     elif catname == 'quaia_G20.5_orig':
-        fn_cat = os.path.join(RESULTDIR, f'data/catalogs/quaia/{catname}.fits')
+        fn_cat = os.path.join(base_dir, f'data/catalogs/quaia/quaia_G20.5_masked.npy')
         selfunc_str = f'quaia_G20.5_orig'
         expected_dipole_amp = 0.0047
         base_rate = 41.356  # mean of (selfunc corrected) unmasked pixels in G<20.5 with 'quaia_G20.5_orig'
 
+    elif catname == 'quaia_G20.5_nosf':
+        fn_cat = os.path.join(base_dir, f'data/catalogs/quaia/quaia_G20.5_masked.npy')
+        selfunc_str = 'ones'
+        expected_dipole_amp = 0.0047
+        base_rate = 41.356  # mean of (selfunc corrected) unmasked pixels in G<20.5 with 'quaia_G20.5_orig'
+
     elif catname == 'quaia_G20.0_zsplit2bin0':
-        fn_cat = os.path.join(RESULTDIR, f'data/catalogs/quaia/{catname}.fits')
+        fn_cat = os.path.join(base_dir, f'data/catalogs/quaia/{catname}_masked.npy')
         selfunc_str = 'quaia_G20.0_zsplit2bin0'
         expected_dipole_amp = 0.0050
         base_rate = 18.081 # mean of (selfunc corrected) unmasked pixels in 'quaia_G20.0_zsplit2bin0'
 
     elif catname == 'quaia_G20.0_zsplit2bin1':
-        fn_cat = os.path.join(RESULTDIR, f'data/catalogs/quaia/{catname}.fits')
+        fn_cat = os.path.join(base_dir, f'data/catalogs/quaia/{catname}_masked.npy')
         selfunc_str = 'quaia_G20.0_zsplit2bin1'
         expected_dipole_amp = 0.0055
         base_rate = 18.840 # mean of (selfunc corrected) unmasked pixels in 'quaia_G20.0_zsplit2bin1'
     
     elif catname == 'catwise':
-        fn_cat = os.path.join(RESULTDIR, f'data/catalogs/catwise_agns/catwise_agns_master.fits')
+        fn_cat = os.path.join(base_dir, f'data/catalogs/catwise_agns/catwise_agns_masked.npy')
         selfunc_str = 'catwise_zodi'
         expected_dipole_amp = 0.0074
         base_rate = 77.4495 # mean base rate of the final 100 accepted samples for CatWISE, 13 generations
 
+    elif catname == 'catwise_orig':
+        fn_cat = os.path.join(base_dir, f'data/catalogs/catwise_agns/catwise_agns_masked.npy')
+        selfunc_str = 'catwise'
+        expected_dipole_amp = 0.0074
+        base_rate = 77.4495 # mean base rate of the final 100 accepted samples for CatWISE, 13 generations
+
     elif catname == 'catwise_elatcorr':
-        fn_cat = os.path.join(RESULTDIR, f'data/catalogs/catwise_agns/catwise_agns_master.fits')
+        fn_cat = os.path.join(base_dir, f'data/catalogs/catwise_agns/catwise_agns_masked.npy')
         selfunc_str = 'catwise_elatcorr'
+        expected_dipole_amp = 0.0074
+        base_rate = 77.4495 # mean base rate of the final 100 accepted samples for CatWISE, 13 generations
+
+    elif catname == 'catwise_nosf':
+        fn_cat = os.path.join(base_dir, f'data/catalogs/catwise_agns/catwise_agns_masked.npy')
+        selfunc_str = 'ones'
         expected_dipole_amp = 0.0074
         base_rate = 77.4495 # mean base rate of the final 100 accepted samples for CatWISE, 13 generations
 
@@ -220,11 +248,8 @@ def get_catalog_info(catname):
 
 
 def get_observation(fn_cat, nside, blim):
-    # load catalog
-    qmap_raw = tools.load_catalog_as_map(fn_cat, frame='icrs', nside=nside)
-    # mask
-    small_masks = fitsio.read(os.path.join(RESULTDIR, f'data/catalogs/masks/mask_master_hpx_r1.0.fits'))
-    qmap_masked = qmap_raw * small_masks * tools.get_galactic_plane_mask(blim, nside=nside, frame='icrs')
+    # load the masked .npy file
+    qmap_masked = np.load(fn_cat)
         # at this point, any masked pixels are ZERO (rather than NaN, e.g.); ~half the map is masked
 
     # convert to overdensity
@@ -402,11 +427,8 @@ def model_dipole_only(parameters, selfunc, base_rate, dipdir, theta, phi, poisso
                                         phi=dipdir.icrs.ra.rad)
     expected_dipole_map = dipole.dipole(theta, phi, *amps)
 
-    # smooth overdensity map
-    smooth_overdensity_map = expected_dipole_map
-
     # poisson sample, including the base rate and the selfunc map
-    number_map = (1. + smooth_overdensity_map) * base_rate * selfunc
+    number_map = (1. + expected_dipole_map) * base_rate * selfunc
     if poisson == True:
         rng = np.random.default_rng(seed=None) # should I put a seed in here??
         number_map = rng.poisson(number_map)
@@ -457,6 +479,43 @@ def model_dipole_excess_base(parameters, selfunc, dipdir, theta, phi, ell_max=8,
 
     # poisson sample, including the base rate and the selfunc map
     number_map = (1. + smooth_overdensity_map) * parameters["base_rate"] * selfunc
+    if poisson == True:
+        rng = np.random.default_rng(seed=None) # should I put a seed in here??
+        number_map = rng.poisson(number_map)
+
+    return { "data" : number_map }
+
+
+def model_dipole_base(parameters, selfunc, dipdir, theta, phi, ell_max=8, poisson=True):
+    """
+    Generates a healpix density map with dipole in fixed CMB dipole direction and excess angular power.
+
+    Parameters
+    ----------
+    parameters : dict
+        keys:
+            "dipole_amp" = dipole amplitude
+            "base_rate" = base rate of quasars per healpixel
+    selfunc : ndarray
+        Selection function map. The map is generated with the same npix.
+
+    Returns
+    -------
+    Quasar number map.
+    
+    """
+
+    nside = hp.npix2nside(len(selfunc))
+
+    # expected dipole map
+    # amps = np.zeros(4)
+    amps = tools.spherical_to_cartesian(r=parameters["dipole_amp"],
+                                        theta=np.pi/2-dipdir.icrs.dec.rad,
+                                        phi=dipdir.icrs.ra.rad)
+    expected_dipole_map = dipole.dipole(theta, phi, *amps)
+
+    # poisson sample, including the base rate and the selfunc map
+    number_map = (1. + expected_dipole_map) * parameters["base_rate"] * selfunc
     if poisson == True:
         rng = np.random.default_rng(seed=None) # should I put a seed in here??
         number_map = rng.poisson(number_map)
