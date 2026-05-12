@@ -23,7 +23,7 @@ def main():
 
     """ MAIN INPUTS """
 
-    model = 'free_dipole_excess'
+    model = 'free_dipole'
 
     catname = 'quaia_G20.0'
 
@@ -32,7 +32,7 @@ def main():
 
     # fake data parameters
     data_dipole_amp = catalog_info['expected_dipole_amp']
-    data_log_excess = -4
+    data_log_excess = -30
     base_rate = catalog_info['base_rate']
 
     distance_nside = 2
@@ -41,16 +41,16 @@ def main():
 
     population_size = 500
     minimum_epsilon = 1e-10
-    ngens = 10
+    ngens = 15
 
     ell_max_data = 2     # used to inject any excess power into the fake data
     ell_max_abc = 2                 # used in the ABC only if 'excess' in model
 
-    selfunc = False     # use the catalog's selfunc? if False, uses 'ones' i.e. perfect completeness
+    selfunc = True     # use the catalog's selfunc? if False, uses 'ones' i.e. perfect completeness
 
     # include shot noise?
-    poisson_data = False
-    poisson_abc = False
+    poisson_data = True
+    poisson_abc = True
 
     continue_run = True        # continue a run where we left off, if one exists but stopped (probably due to time limit issues)
 
@@ -141,10 +141,9 @@ def run_abc(fake_data_dict, fake_data_dir, model, distance_nside, population_siz
     """ PRIOR """
     # bounds for prior:
     #   first is lower bound, second entry is WIDTH (not upper bound)
-    dipole_x_bounds = (-.01, .02)
-    dipole_y_bounds = (-.01, .02)
-    dipole_z_bounds = (-.01, .02)
-    log_excess_bounds = (-10, 7)        # only used if excess power is a free parameter in the model
+    dipole_x_bounds = (-4. * input_dipole_amp, 8 * input_dipole_amp)
+    dipole_y_bounds = (-4. * input_dipole_amp, 8 * input_dipole_amp)
+    dipole_z_bounds = (-4. * input_dipole_amp, 8 * input_dipole_amp)
 
     prior = {}
     prior['dipole_x'] = pyabc.RV("uniform", *dipole_x_bounds)
@@ -177,8 +176,6 @@ def run_abc(fake_data_dict, fake_data_dir, model, distance_nside, population_siz
     noise_tag = f'_no-SN' if poisson == False else ''
     res_dir = os.path.join(fake_data_dir,
                 f'{model}_nside{distance_nside}_{population_size}mocks_{ngens}iters{noise_tag}{ell_max_tag}')
-    # # !! trying a different epsilon:
-    # res_dir = os.path.join(res_dir, f'QuantileEpsilon_alpha-0.2')
     if not os.path.exists(res_dir):
         os.makedirs(res_dir)
 
