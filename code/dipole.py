@@ -85,6 +85,42 @@ def fit_dipole(map_to_fit, Cinv=None, fit_zeros=False, idx=None, Lambda=0):
 
     return bestfit_pars, bestfit_stderr
 
+
+def fit_dipole_amplitude(map_to_fit, Cinv=None, fit_zeros=False, idx=None):
+
+    assert map_to_fit.ndim == 1, "input map must be 1-dimensional"
+
+    NPIX = len(map_to_fit)
+
+    # single dipole template, fixed to the CMB
+    comps = np.append(0., cmb_dipole(amplitude=1., return_comps=True))
+    template_map = dipole_map(comps, NSIDE=hp.npix2nside(NPIX))
+
+    # design matrix
+    A = np.column_stack((np.ones(NPIX), template_map))
+    # covariances: identity for now
+    if Cinv is None:
+        Cinv = np.ones(NPIX)
+    assert len(Cinv) == NPIX, "input Cinv and input map must have the same length"
+
+    # indices to fit
+    idx_to_fit = np.full(NPIX, True)
+    if fit_zeros is False:
+        idx_to_fit = idx_to_fit & (map_to_fit!=0.)
+    if idx is not None:
+        assert len(idx) == NPIX, "input idx and input map must have the same length"
+        idx_to_fit = idx_to_fit & idx
+    map_to_fit, A, Cinv = map_to_fit[idx_to_fit], A[idx_to_fit], Cinv[idx_to_fit]
+
+    # perform the regression
+    bestfit_pars, bestfit_Cinv = tools.lstsq(map_to_fit, A, Cinv, Lambda=0.)
+
+    # uncertainties on the best-fit pars
+    bestfit_stderr = np.sqrt(np.diag(np.linalg.inv(bestfit_Cinv)))
+
+    return bestfit_pars, bestfit_stderr
+
+
 def overdensity_map(qmap, selfunc, min_selfunc=0.5):
     # turn the input into an overdensity map
     qmap_corrected = qmap / selfunc # Hogg is dying here
@@ -93,26 +129,30 @@ def overdensity_map(qmap, selfunc, min_selfunc=0.5):
     odmap[np.logical_not(good)] = np.NaN # Every line of this code is making Hogg die a little.
     return odmap
 
-def measure_overdensity_dipole_Lambda(sample, Lambda, selfunc=None, fit_zeros=True, verbose=False):
+def measure_overdensity_dipole_Lambda(sample, Lambda, Cinv=None, fit_zeros=True, verbose=False,
+                                        return_err=False):
     """
     Wrapper for `dipole.fit_dipole()`. The input `sample` should be an overdensity map.
     """
     map_to_fit = sample.copy()
     idx_masked = np.isnan(map_to_fit)
     map_to_fit[idx_masked] = 0.
-    if np.all(selfunc == None):
+    if np.all(Cinv == None):
         if verbose:
             print("selection function not provided; assuming completeness = 1 everywhere")
         Cinv = np.ones_like(sample)
     else:
-        Cinv = selfunc.copy()
+        Cinv = Cinv.copy()
     Cinv[idx_masked] = 0. # for Lambda regularization, Cinv is zero in the masked pixels
     comps, stderr = fit_dipole(map_to_fit, Cinv=Cinv, fit_zeros=fit_zeros, Lambda=Lambda)
     if verbose:
         amplitude, direction = get_dipole(comps[1:])
         print(f"best-fit dipole amp. =\t{amplitude:.5f}")
         print(f"best-fit dipole dir.: ", direction)
-    return comps[1:] # since we're fitting overdensities
+    if return_err:
+        return comps[1:], stderr[1:]    # only comps[1:] since we're fitting overdensities; no monopole
+    else:
+        return comps[1:] 
 
 def getDipoleVectors_healpy(densitymap, mask=[None], galcut=0, verbose=False) :
 	"""
