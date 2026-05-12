@@ -31,7 +31,7 @@ from multipoles import multipole_map
 from tools import get_galactic_plane_mask
 
 NSIDE = 64
-RESULTDIR = '/scratch/aew492/lss-dipoles_results'
+RESULTDIR = '/work2/08811/aew492/frontera/lss-dipoles'
 
 def generate_mocks_from_cases():
     """
@@ -279,7 +279,7 @@ def get_cells(cell_str, excess=1e-5):
     return Cells
 
 def get_selfunc_map(selfunc_str, nside=NSIDE, blim=30):
-    mask_fn = os.path.join(RESULTDIR, 'data/catalogs/masks/mask_master_hpx_r1.0.fits')
+    mask_fn = '../data/masks/mask_master_hpx_r1.0.fits'
     # galactic plane cut: used in every case except 'ones'
     gal_plane_mask = get_galactic_plane_mask(blim, nside=NSIDE, frame='icrs') # 1 in unmasked, 0 in masked
     if selfunc_str == 'ones':

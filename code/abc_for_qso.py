@@ -167,7 +167,7 @@ def run_abc(catname, model, distance_nside, population_size, ngens,
     print(f"saved accepted mocks from final generation", flush=True)
 
 
-def get_catalog_info(catname, base_dir='/home/aew492/lss-dipoles'):
+def get_catalog_info(catname, base_dir='/work2/08811/aew492/frontera/lss-dipoles'):
     # catalog-specific inputs
     if catname == 'quaia_G20.0':
         fn_cat = os.path.join(base_dir, f'data/catalogs/quaia/{catname}_masked.npy')
