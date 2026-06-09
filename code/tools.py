@@ -158,6 +158,13 @@ def lstsq(Y, A, Cinv, Lambda=0):
     res = np.linalg.lstsq(a, b, rcond=None)
     return res[0], a
 
+def chisq_Cinv(data, expectation, Cinv):
+    """
+    Return `chisq` given `data`, `expectation`, and inverse covariance `Cinv`.
+    """
+    assert data.shape == expectation.shape, "data and expectation must have the same shape"
+    return np.nansum((data - expectation)**2 * Cinv)
+
 
 """
 COORDINATE TRANSFORMATIONS
@@ -176,6 +183,13 @@ def spherical_to_cartesian(r, theta, phi):
     x = r * np.cos(phi) * np.sin(theta)
     y = r * np.sin(phi) * np.sin(theta)
     z = r * np.cos(theta)
+    return np.array([x, y, z])
+
+def rho_costheta_phi_to_xyz(rho, costheta, phi):
+    sintheta = np.sqrt(1 - costheta**2)
+    x = rho * sintheta * np.cos(phi)
+    y = rho * sintheta * np.sin(phi)
+    z = rho * costheta
     return np.array([x, y, z])
 
 def omega_to_theta(omega):
