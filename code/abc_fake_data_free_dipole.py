@@ -17,7 +17,7 @@ import generate_mocks as gm
 from abc_for_qso import get_catalog_info, distance, save_accepted_mocks, model_dipole_excess
 from abc_free_dipole import model_free_dipole, model_free_dipole_excess
 
-RESULTDIR = '/scratch/aew492/lss-dipoles_results'
+RESULTDIR = '/work2/08811/aew492/frontera/lss-dipoles_results'
 
 def main():
 
@@ -42,6 +42,8 @@ def main():
     population_size = 500
     minimum_epsilon = 1e-10
     ngens = 15
+    
+    prior_type = 'cartesian'
 
     ell_max_data = 2     # used to inject any excess power into the fake data
     ell_max_abc = 2                 # used in the ABC only if 'excess' in model
@@ -53,31 +55,39 @@ def main():
     poisson_abc = True
 
     continue_run = True        # continue a run where we left off, if one exists but stopped (probably due to time limit issues)
+    
+    # number of trials
+    ntrials = 72
+    
+    # directory to store the runs
+    save_dir = os.path.join(fake_data_dir(catalog_info['selfunc_str'], base_rate, data_dipole_amp, data_log_excess, catalog_info['expected_dipole_amp'],
+                                poisson=poisson_data, ell_max=ell_max_data, selfunc=selfunc), 'trials')
+    
+    for itrial in range(ntrials):
+        data_dir = os.path.join(save_dir, f'trial{itrial}')
+        data_fn = os.path.join(data_dir, f'fake_data_trial{itrial}.npy')
+        print(data_fn)
+        
+        if continue_run == True and os.path.exists(data_fn):
+            print(f"loading data from a previous run")
+            fake_data_dict = np.load(data_fn, allow_pickle=True).item()
+            continue_run_ = True    # tell run_abc() that we want to continue the previous run using this data
+        else:
+            print(f"generating new fake data for trial {itrial}")
+            # generate fake data
+            fake_data_dict = generate_fake_data(catname, data_dipole_amp, data_log_excess, base_rate,
+                                                ell_max=ell_max_data, poisson=poisson_data, selfunc=selfunc)
+            # save the fake data here in case we need to continue the run later (otherwise a continued run would generate new fake data!)
+            os.makedirs(data_dir, exist_ok=True)
+            np.save(data_fn, fake_data_dict)
+            continue_run_ = False  # tell run_abc() that we actually want to start a new run since we don't have the old data
+    
 
-    # check if we've already started a run for this case
-    save_dir = fake_data_dir(catalog_info['selfunc_str'], base_rate, data_dipole_amp, data_log_excess, catalog_info['expected_dipole_amp'],
-                                poisson=poisson_data, ell_max=ell_max_data, selfunc=selfunc)
-    data_fn = os.path.join(save_dir, f'fake_data.npy')
-    if continue_run == True and os.path.exists(data_fn):
-        print(f"loading data from a previous run")
-        fake_data_dict = np.load(data_fn, allow_pickle=True).item()
-        continue_run_ = True    # tell run_abc() that we want to continue the previous run using this data
-    else:
-        print(f"generating new fake data")
-        # generate fake data
-        fake_data_dict = generate_fake_data(catname, data_dipole_amp, data_log_excess, base_rate,
-                                            ell_max=ell_max_data, poisson=poisson_data, selfunc=selfunc)
-        # save the fake data here in case we need to continue the run later (otherwise a continued run would generate new fake data!)
-        if not os.path.exists(save_dir):
-            os.makedirs(save_dir)
-        np.save(data_fn, fake_data_dict)
-        continue_run_ = False  # tell run_abc() that we actually want to start a new run since we don't have the old data
-
-    # run the ABC for this catalog and model:
-    #   saves the posteriors, history, and the accepted maps from the final generation
-    run_abc(fake_data_dict, save_dir, model, distance_nside, population_size, ngens,
-            minimum_epsilon=minimum_epsilon, nside=nside, blim=blim, ell_max=ell_max_abc, poisson=poisson_abc,
-            continue_run=continue_run_)
+        # run the ABC for this catalog and model:
+        #   saves the posteriors, history, and the accepted maps from the final generation
+        run_abc(fake_data_dict, data_dir, model, distance_nside, population_size, ngens,
+                minimum_epsilon=minimum_epsilon, nside=nside, blim=blim, ell_max=ell_max_abc, poisson=poisson_abc,
+                continue_run=continue_run_, prior_type=prior_type)
 
 
 def generate_fake_data(catname, dipole_amp, log_excess, base_rate, nside=64, blim=30, ell_max=8,
@@ -121,7 +131,8 @@ def generate_fake_data(catname, dipole_amp, log_excess, base_rate, nside=64, bli
     return fake_data_dict
 
 def run_abc(fake_data_dict, fake_data_dir, model, distance_nside, population_size, ngens,
-            minimum_epsilon=1e-10, nside=64, blim=30, ell_max=8, poisson=True, continue_run=True):
+            minimum_epsilon=1e-10, nside=64, blim=30, ell_max=8, poisson=True, continue_run=True,
+           prior_type='spherical'):
 
     assert model.lower() in ['free_dipole', 'free_dipole_excess'], "unknown model name"
     model = model.lower()
@@ -141,16 +152,33 @@ def run_abc(fake_data_dict, fake_data_dir, model, distance_nside, population_siz
     """ PRIOR """
     # bounds for prior:
     #   first is lower bound, second entry is WIDTH (not upper bound)
-    dipole_x_bounds = (-4. * input_dipole_amp, 8 * input_dipole_amp)
-    dipole_y_bounds = (-4. * input_dipole_amp, 8 * input_dipole_amp)
-    dipole_z_bounds = (-4. * input_dipole_amp, 8 * input_dipole_amp)
+    # model_free_dipole() will generate the dipole maps according to
+    # the correct coordinates based on the parameter keys
+    if prior_type.lower() == 'cartesian':
+        dipole_x_bounds = (-4. * input_dipole_amp, 8 * input_dipole_amp)
+        dipole_y_bounds = (-4. * input_dipole_amp, 8 * input_dipole_amp)
+        dipole_z_bounds = (-4. * input_dipole_amp, 8 * input_dipole_amp)
 
-    prior = {}
-    prior['dipole_x'] = pyabc.RV("uniform", *dipole_x_bounds)
-    prior['dipole_y'] = pyabc.RV("uniform", *dipole_y_bounds)
-    prior['dipole_z'] = pyabc.RV("uniform", *dipole_z_bounds)
-    if 'excess' in model:
-        prior['log_excess'] = pyabc.RV("uniform", *log_excess_bounds)
+        prior = {}
+        prior['dipole_x'] = pyabc.RV("uniform", *dipole_x_bounds)
+        prior['dipole_y'] = pyabc.RV("uniform", *dipole_y_bounds)
+        prior['dipole_z'] = pyabc.RV("uniform", *dipole_z_bounds)
+        if 'excess' in model:
+            prior['log_excess'] = pyabc.RV("uniform", *log_excess_bounds)
+    
+    elif prior_type.lower() == 'spherical':
+        # flat prior in (rho, cos theta, phi)
+        rho_bounds = (0., 8 * expected_dipole_amp)
+        costheta_bounds = (-1., 1.)
+        phi_bounds = (0., 2 * np.pi)
+        
+        prior = {}
+        prior['rho'] = pyabc.RV("uniform", *rho_bounds)
+        prior['costheta'] = pyabc.RV("uniform", *costheta_bounds)
+        prior['phi'] = pyabc.RV("uniform", *phi_bounds)
+    
+    else:
+        raise ValueError("unrecognized prior string")
     
     prior_abc = pyabc.Distribution(prior)
 
@@ -169,15 +197,12 @@ def run_abc(fake_data_dict, fake_data_dir, model, distance_nside, population_siz
 
     """ SAVE DIRECTORY """
     # where to store results
-    if 'excess' in model and ell_max != 8:
-        ell_max_tag = f'_ellmax-{int(ell_max)}'
-    else:
-        ell_max_tag = ''
+    ell_max_tag = f'_ellmax-{int(ell_max)}' if 'excess' in model else ''
     noise_tag = f'_no-SN' if poisson == False else ''
+    prior_tag = f'_flat-prior-{prior_type}'
     res_dir = os.path.join(fake_data_dir,
-                f'{model}_nside{distance_nside}_{population_size}mocks_{ngens}iters{noise_tag}{ell_max_tag}')
-    if not os.path.exists(res_dir):
-        os.makedirs(res_dir)
+                f'{model}_nside{distance_nside}_{population_size}mocks_{ngens}iters{noise_tag}{ell_max_tag}{prior_tag}')
+    os.makedirs(res_dir, exist_ok=True)
 
     """ PERFORM THE INFERENCE """
     abc = pyabc.ABCSMC(model_wrapper, prior_abc, distance_wrapper, population_size=population_size)
@@ -228,11 +253,15 @@ def fake_data_dir(catname_, base_rate, input_dipole_amp, input_log_excess, expec
                     poisson=True, ell_max=8, selfunc=True):
     # helper function to get directory for this fake data set
     dipamp_tag = f'_dipamp-{input_dipole_amp / expected_dipole_amp:.1f}x'
-    excess_tag = f'_excess-zero' if input_log_excess < -20 else f'_excess-{input_log_excess:.1f}'
+    if input_log_excess < -20:
+        excess_tag = f'_excess-zero'
+        ell_max_tag = f''
+    else:
+        excess_tag = f'_excess-{input_log_excess:.1f}'
+        ell_max_tag = f'_ellmax-{int(ell_max)}'
     noise_tag = f'_no-SN' if poisson == False else ''
-    ell_max_tag = '' if ell_max == 8 else f'_ellmax-{int(ell_max)}'
     selfunc_tag = '' if selfunc else '_sf-ones'
-    save_dir = os.path.join(RESULTDIR, 'results/ABC/fake_data',  # same as the real data case except now in the extra fake_data/ dir.
+    save_dir = os.path.join(RESULTDIR, 'ABC/fake_data',  # same as the real data case except now in the extra fake_data/ dir.
                         catname_ + f'_base-rate-{base_rate:.4f}{dipamp_tag}{excess_tag}{noise_tag}{ell_max_tag}{selfunc_tag}')
 
     return save_dir

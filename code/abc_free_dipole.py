@@ -16,13 +16,13 @@ import multipoles
 import generate_mocks as gm
 from abc_for_qso import get_catalog_info, distance, save_accepted_mocks, model_dipole_excess, get_observation
 
-RESULTDIR = '/scratch/aew492/lss-dipoles_results'
+RESULTDIR = '/work2/08811/aew492/frontera/lss-dipoles_results'
 
 def main():
 
     """ MAIN INPUTS """
 
-    catname = 'quaia_G20.0_zsplit2bin1'
+    catname = 'catwise_elatcorr'
 
     distance_nside = 2
     nside = 64
@@ -31,27 +31,29 @@ def main():
     population_size = 500
     minimum_epsilon = 1e-10
     ngens = 15
+    
+    prior_type = 'spherical'
 
     continue_run = True        # continue a run where we left off, if one exists but stopped (probably due to time limit issues)
 
     # run the ABC for this catalog and model:
     #   saves the posteriors, history, and the accepted maps from the final generation
     run_abc(catname, distance_nside, population_size, ngens,
-            minimum_epsilon=minimum_epsilon, nside=nside, blim=blim, continue_run=continue_run)
+            minimum_epsilon=minimum_epsilon, nside=nside, blim=blim, continue_run=continue_run,
+           prior_type=prior_type)
 
 
 def run_abc(catname, distance_nside, population_size, ngens,
-            minimum_epsilon=1e-10, nside=64, blim=30, poisson=True, continue_run=True):
+            minimum_epsilon=1e-10, nside=64, blim=30, poisson=True, continue_run=True,
+           prior_type='spherical'):
 
     """ DATA & SELECTION FUNCTION """
     catalog_info = get_catalog_info(catname)
 
     # where to store results
     catname_ = catalog_info['selfunc_str']
-    save_dir = os.path.join(RESULTDIR, 'results/ABC', f'{catname_}_free_dipole_nside{distance_nside}_' +
-                                                        f'{population_size}mocks_{ngens}iters_base-rate-{catalog_info["base_rate"]:.4f}')
-    if not os.path.exists(save_dir):
-        os.makedirs(save_dir)
+    save_dir = os.path.join(RESULTDIR, 'ABC', f'{catname_}_free_dipole_nside{distance_nside}_' +
+                                                        f'{population_size}mocks_{ngens}iters_base-rate-{catalog_info["base_rate"]:.4f}_{prior_type}')
 
     odmap, qmap_masked = get_observation(catalog_info['fn_cat'], nside, blim)
 
@@ -64,14 +66,32 @@ def run_abc(catname, distance_nside, population_size, ngens,
     """ PRIOR """
     # bounds for prior:
     #   first is lower bound, second entry is WIDTH (not upper bound)
-    dipole_x_bounds = (-4. * catalog_info['expected_dipole_amp'], 8 * catalog_info['expected_dipole_amp'])
-    dipole_y_bounds = (-4. * catalog_info['expected_dipole_amp'], 8 * catalog_info['expected_dipole_amp'])
-    dipole_z_bounds = (-4. * catalog_info['expected_dipole_amp'], 8 * catalog_info['expected_dipole_amp'])
+    # model_free_dipole() will generate the dipole maps according to
+    # the correct coordinates based on the parameter keys
+    expected_dipole_amp = catalog_info['expected_dipole_amp']
+    if prior_type.lower() == 'cartesian':
 
-    prior = {}
-    prior['dipole_x'] = pyabc.RV("uniform", *dipole_x_bounds)
-    prior['dipole_y'] = pyabc.RV("uniform", *dipole_y_bounds)
-    prior['dipole_z'] = pyabc.RV("uniform", *dipole_z_bounds)
+        prior = {}
+        for key in ['dipole_x', 'dipole_y', 'dipole_z']:
+            bounds = (-4. * expected_dipole_amp, 8 * expected_dipole_amp)
+            prior[key] = pyabc.RV("uniform", *bounds)
+            
+        if 'excess' in model:
+            prior['log_excess'] = pyabc.RV("uniform", *log_excess_bounds)
+    
+    elif prior_type.lower() == 'spherical':
+        # flat prior in (rho, cos theta, phi)
+        bounds_dict = {
+            'rho' : (0., 8 * expected_dipole_amp),
+            'costheta' : (-1., 1.),
+            'phi' : (0., 2 * np.pi)
+        }
+        prior = {}
+        for key, bounds in bounds_dict.items():
+            prior[key] = pyabc.RV("uniform", *bounds)
+    
+    else:
+        raise ValueError("unrecognized prior string")
     
     prior_abc = pyabc.Distribution(prior)
 
@@ -86,6 +106,7 @@ def run_abc(catname, distance_nside, population_size, ngens,
     abc = pyabc.ABCSMC(model_wrapper, prior_abc, distance_wrapper, population_size=population_size)
 
     # store the history at this tempfile
+    os.makedirs(save_dir, exist_ok=True)
     db_path = os.path.join(tempfile.gettempdir(), save_dir, f'history.db')
     if os.path.exists(db_path) and continue_run == True:
         print(f"continuing run found at {db_path}")
@@ -128,11 +149,28 @@ def run_abc(catname, distance_nside, population_size, ngens,
 def model_free_dipole(parameters, selfunc, base_rate, theta, phi, poisson=True):
 
     nside = hp.npix2nside(len(selfunc))
-
-    # expected dipole map
-    dipole_map = dipole.dipole(theta, phi, parameters['dipole_x'],
-                                            parameters['dipole_y'],
-                                            parameters['dipole_z'])
+    
+    # parameters could be given in Cartesian (x,y,z) or spherical (rho, costheta, phi).
+        # kind of hacky but we can infer which set of coordinates are being used by
+        # the keys in the parameter dict
+    if 'dipole_x' in parameters.keys():
+        # expected dipole map
+        dipole_map = dipole.dipole(theta, phi, parameters['dipole_x'],
+                                                parameters['dipole_y'],
+                                                parameters['dipole_z'])
+        
+    elif 'rho' in parameters.keys():
+        # convert (rho, costheta, phi) to (x,y,z) for our functions
+        rho, costheta, phi_ = parameters['rho'], parameters['costheta'], parameters['phi']
+            # gross notation but note phi_ is the dipole angle, whereas phi is the
+            # central phi of each healpixel
+        # get sine theta with the identity
+            # (is this the best way to do this? I could also take arccos but this
+            # feels more potentially numerically unstable for some reason (maybe I am
+            # inverse-averse)
+        x, y, z = tools.rho_costheta_phi_to_xyz(rho, costheta, phi_)
+        # expected dipole map
+        dipole_map = dipole.dipole(theta, phi, x, y, z)
 
     # poisson sample, including the base rate and the selfunc map
     number_map = (1. + dipole_map) * base_rate * selfunc
