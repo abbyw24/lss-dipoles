@@ -144,7 +144,7 @@ class SecrestDipole():
                     catname,
                     initial_catfn,
                     mag, maglim,
-                    mask_fn='/home/aew492/lss-dipoles/data/catalogs/masks/mask_master_hpx_r1.0.fits',
+                    mask_fn='/work2/08811/aew492/frontera/lss-dipoles/data/catalogs/masks/mask_master_hpx_r1.0.fits',
                     blim=30,
                     Rv=3.1,
                     delRW=0,
@@ -154,7 +154,7 @@ class SecrestDipole():
                     load_init=True,
                     log=True,
                     newlog=True,
-                    basedir='/home/aew492/lss-dipoles/data/catalogs',
+                    basedir='/work2/08811/aew492/frontera/lss-dipoles/data/catalogs',
                     save_tag=''):
 
         # asserts
