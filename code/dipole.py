@@ -154,6 +154,37 @@ def measure_overdensity_dipole_Lambda(sample, Lambda, Cinv=None, fit_zeros=True,
     else:
         return comps[1:] 
 
+
+def measure_dipole_amplitude(sample, Cinv=None, fit_zeros=True, verbose=False, return_err=False):
+    # keep this as analogous as possible to the version used for the free direction case
+    map_to_fit = sample.copy()
+    idx_masked = np.isnan(map_to_fit)
+    map_to_fit[idx_masked] = 0.
+    if np.all(Cinv == None):
+        if verbose:
+            print("selection function not provided; assuming completeness = 1 everywhere")
+        Cinv = np.ones_like(sample)
+    else:
+        Cinv = Cinv.copy()
+    Cinv[idx_masked] = 0. # Cinv is zero in the masked pixels
+    
+    comps, stderr = fit_dipole_amplitude(map_to_fit, Cinv=Cinv)
+    print("best-fit comps: ", comps)
+    print("stderr: ", stderr)
+
+    # get the dipole amplitude
+    dipamp = comps[1] / comps[0]
+    dipamp_std = stderr[1] / comps[0] # ??
+    
+    if verbose:
+        print(f"dipole amplitude: ", dipamp)
+        print(f"uncertainty: ", dipamp_std)
+    if return_err:
+        return dipamp, dipamp_std
+    else:
+        return dipamp
+    
+
 def getDipoleVectors_healpy(densitymap, mask=[None], galcut=0, verbose=False) :
 	"""
     ! COPIED FROM SECREST !
