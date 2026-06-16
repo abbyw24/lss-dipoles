@@ -43,7 +43,7 @@ def main():
     minimum_epsilon = 1e-10
     ngens = 15
     
-    prior_type = 'cartesian'
+    prior_type = 'spherical'
 
     ell_max_data = 2     # used to inject any excess power into the fake data
     ell_max_abc = 2                 # used in the ABC only if 'excess' in model
@@ -57,7 +57,7 @@ def main():
     continue_run = True        # continue a run where we left off, if one exists but stopped (probably due to time limit issues)
     
     # number of trials
-    ntrials = 72
+    ntrials = 24
     
     # directory to store the runs
     save_dir = os.path.join(fake_data_dir(catalog_info['selfunc_str'], base_rate, data_dipole_amp, data_log_excess, catalog_info['expected_dipole_amp'],
@@ -169,7 +169,7 @@ def run_abc(fake_data_dict, fake_data_dir, model, distance_nside, population_siz
     elif prior_type.lower() == 'spherical':
         # flat prior in (rho, cos theta, phi)
         rho_bounds = (0., 8 * expected_dipole_amp)
-        costheta_bounds = (-1., 1.)
+        costheta_bounds = (-1., 2.)
         phi_bounds = (0., 2 * np.pi)
         
         prior = {}

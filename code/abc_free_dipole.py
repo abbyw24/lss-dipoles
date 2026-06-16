@@ -83,7 +83,7 @@ def run_abc(catname, distance_nside, population_size, ngens,
         # flat prior in (rho, cos theta, phi)
         bounds_dict = {
             'rho' : (0., 8 * expected_dipole_amp),
-            'costheta' : (-1., 1.),
+            'costheta' : (-1., 2.),
             'phi' : (0., 2 * np.pi)
         }
         prior = {}

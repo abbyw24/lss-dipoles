@@ -163,7 +163,7 @@ class SecrestDipole():
         # input parameters
         self.catname = catname
         self.initial_catfn = initial_catfn
-        self.mag = mag
+        self.mag = mag.upper()
         self.maglim = maglim
         self.mask_fn = mask_fn
         self.basedir = basedir
@@ -265,6 +265,8 @@ class SecrestDipole():
     def cut_mag(self):
         if self.mag == 'G':
             key = 'phot_g_mean_mag'
+        elif self.mag == 'W1' and 'quaia' in self.catname:
+            key = 'mag_w1_vg'
         else:
             key = self.mag
         self._update_working(self.table[self.table[key] <= self.maglim])
