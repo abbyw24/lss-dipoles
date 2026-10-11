@@ -163,7 +163,7 @@ class SecrestDipole():
         # input parameters
         self.catname = catname
         self.initial_catfn = initial_catfn
-        self.mag = mag.upper()
+        self.mag = mag
         self.maglim = maglim
         self.mask_fn = mask_fn
         self.basedir = basedir
