@@ -8,6 +8,7 @@ import astropy
 from astropy.table import Table
 from astropy.coordinates import SkyCoord, Angle
 import astropy.units as u
+import scipy
 import os
 import healpy as hp
 from healpy.newvisufunc import projview
@@ -212,6 +213,7 @@ def thetaphi_to_lonlat(theta, phi):
     lon = Angle(phi).to(u.deg)
     lat = Angle((np.pi/2 * u.rad) - theta).to(u.deg)
     return lon, lat
+
 
 """
 DIPOLE-Y THINGS
@@ -454,3 +456,108 @@ def quantile(x, q, weights=None):
         cdf /= cdf[-1]
         cdf = np.append(0, cdf)
         return np.interp(q, cdf, x[idx]).tolist()
+
+    
+def weighted_quantile(values, weights, quantiles):
+    """
+    Compute weighted quantiles of `values`.
+
+    Parameters
+    ----------
+    values : array-like
+        Data values.
+    weights : array-like
+        Non-negative weights, same shape as values.
+    quantiles : array-like
+        Quantiles to compute, in [0, 1].
+
+    Returns
+    -------
+    quantile_values : ndarray
+        Weighted quantiles.
+    """
+    
+    values = np.asarray(values)
+    weights = np.asarray(weights)
+    quantiles = np.asarray(quantiles)
+
+    # Sort by values
+    sorter = np.argsort(values)
+    values = values[sorter]
+    weights = weights[sorter]
+
+    # Compute normalized cumulative weights
+    cumulative_weights = np.cumsum(weights)
+    cumulative_weights /= cumulative_weights[-1]
+
+    # Interpolate to find quantile values
+    return np.interp(quantiles, cumulative_weights, values)
+
+"""ERROR & UNCERTAINTY"""
+# helper function
+def dipamp_err(comps, err):
+    """
+    Propagate dipole error from Cartesian components into a single amplitude |D|
+
+    Parameters
+    ----------
+    comps : array-like, shape (3,)
+        Vector components (x, y, z)
+    err : array-like, shape (3,)
+        Uncertainties (dx, dy, dz)
+
+    Returns
+    -------
+    dipamp : float
+        Magnitude |D|
+    dr : float
+        Uncertainty in |D|
+    """
+
+    dipamp = np.linalg.norm(comps)
+
+    dipamp_std = np.sqrt(np.sum((comps * err) ** 2)) / dipamp
+    
+    # uncertainty in the direction?
+    # stderr is the uncertainty in the Cartesian dipole components;
+    # so we want to convert (dx, dy, dz) -> (dtheta, dphi)
+    x, y, z = comps
+    dx, dy, dz = err
+    
+    # thank you chat for the following:
+    r2 = x**2 + y**2 + z**2
+    rho2 = x**2 + y**2
+    rho = np.sqrt(rho2)
+
+    dtheta = np.sqrt(
+        (x * z / (r2 * rho) * dx)**2
+        + (y * z / (r2 * rho) * dy)**2
+        + (rho / r2 * dz)**2
+    )
+
+    dphi = np.sqrt(
+        (y / rho2 * dx)**2
+        + (x / rho2 * dy)**2
+    )
+
+    return dipamp_std, dtheta, dphi
+
+
+def dipdir_b_err(samples, weights, sigma=1):
+    """
+    """
+    # dipole amplitude of each sample
+    if 'dipole_x' in samples.keys():
+        norms = np.sqrt(samples['dipole_x']**2 + samples['dipole_y']**2 + samples['dipole_z']**2)
+        # galactic latitude of each sample
+        bs = np.rad2deg(np.arcsin(samples['dipole_z'] / norms))
+    elif 'rho' in samples.keys():
+        # in spherical we can get the uncertainty more directly
+        bs = np.rad2deg(np.arcsin(samples['costheta']))
+    else:
+        raise ValueError("unrecognized sample keys")
+    # convert the input sigma level to a central confidence interval (quantiles),
+    #  then compute the weighted quantiles
+    weighted_quants = weighted_quantile(bs, weights, scipy.stats.norm.cdf([-sigma, sigma]))
+    err = 0.5 * (weighted_quants[1] - weighted_quants[0])
+    return err
