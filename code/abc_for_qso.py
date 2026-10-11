@@ -15,7 +15,7 @@ import dipole
 import multipoles
 import generate_mocks as gm
 
-RESULTDIR = '/scratch/aew492/lss-dipoles_results'
+RESULTDIR = '/work2/08811/aew492/frontera/lss-dipoles_results'
 
 def main():
 
@@ -28,7 +28,7 @@ def main():
     """
     model = 'dipole_only'
 
-    catname = 'catwise_orig'
+    catname = 'quaia_G20.0_zsplit2bin1'
 
     distance_nside = 2
     nside = 64
@@ -60,7 +60,7 @@ def run_abc(catname, model, distance_nside, population_size, ngens,
     # where to store results
     catname_ = catname if catalog_info['selfunc_str'] == 'ones' else catalog_info['selfunc_str']
     base_rate_tag = '' if 'base' in model else f'_base-rate-{catalog_info["base_rate"]:.4f}'
-    save_dir = os.path.join(RESULTDIR, 'results/ABC',
+    save_dir = os.path.join(RESULTDIR, 'ABC',
                             f'{catname_}_{model}_nside{distance_nside}_{population_size}mocks_{ngens}iters{base_rate_tag}')
     # # !! trying a different alpha:
     # alpha = 0.2
@@ -171,6 +171,13 @@ def get_catalog_info(catname, base_dir='/work2/08811/aew492/frontera/lss-dipoles
     # catalog-specific inputs
     if catname == 'quaia_G20.0':
         fn_cat = os.path.join(base_dir, f'data/catalogs/quaia/{catname}_masked.npy')
+        selfunc_str = 'quaia_G20.0_zodi_new'
+        expected_dipole_amp = 0.0052
+        base_rate = 33.8480 # mean of (selfunc corrected) unmasked pixels in quaia_G20.0 with 'quaia_G20.0_zodi_new'
+
+    elif catname == 'quaia_G20.0_oldsf':
+        # oldsf refers to the selfunc generated with the incorrect zodi templates!
+        fn_cat = os.path.join(base_dir, f'data/catalogs/quaia/{catname}_masked.npy')
         selfunc_str = 'quaia_G20.0_zodi'
         expected_dipole_amp = 0.0052
         base_rate = 33.6330 # mean base rate of the final 100 accepted samples for Quaia, 14 generations
@@ -188,6 +195,12 @@ def get_catalog_info(catname, base_dir='/work2/08811/aew492/frontera/lss-dipoles
         base_rate = 33.6330 # mean base rate of the final 100 accepted samples for Quaia, 14 generations
 
     elif catname == 'quaia_G20.5':
+        fn_cat = os.path.join(base_dir, f'data/catalogs/quaia/{catname}_masked.npy')
+        selfunc_str = f'quaia_G20.5_zodi_new'
+        expected_dipole_amp = 0.0047
+        base_rate = 55.8003  # mean of (selfunc corrected) unmasked pixels in G<20.5 with 'quaia_G20.5_zodi_new'
+
+    elif catname == 'quaia_G20.5_oldsf':
         fn_cat = os.path.join(base_dir, f'data/catalogs/quaia/{catname}_masked.npy')
         selfunc_str = f'quaia_G20.5_zodi'
         expected_dipole_amp = 0.0047
@@ -207,11 +220,24 @@ def get_catalog_info(catname, base_dir='/work2/08811/aew492/frontera/lss-dipoles
 
     elif catname == 'quaia_G20.0_zsplit2bin0':
         fn_cat = os.path.join(base_dir, f'data/catalogs/quaia/{catname}_masked.npy')
+        selfunc_str = 'quaia_G20.0_zsplit2bin0_new'
+        expected_dipole_amp = 0.0050
+        base_rate = 18.2504 # mean of (selfunc corrected) unmasked pixels in 'quaia_G20.0_zsplit2bin0_new'
+
+    elif catname == 'quaia_G20.0_zsplit2bin0_oldsf':
+        # oldsf refers to the selfunc generated with the incorrect zodi templates!
+        fn_cat = os.path.join(base_dir, f'data/catalogs/quaia/{catname}_masked.npy')
         selfunc_str = 'quaia_G20.0_zsplit2bin0'
         expected_dipole_amp = 0.0050
         base_rate = 18.081 # mean of (selfunc corrected) unmasked pixels in 'quaia_G20.0_zsplit2bin0'
 
     elif catname == 'quaia_G20.0_zsplit2bin1':
+        fn_cat = os.path.join(base_dir, f'data/catalogs/quaia/{catname}_masked.npy')
+        selfunc_str = 'quaia_G20.0_zsplit2bin1_new'
+        expected_dipole_amp = 0.0055
+        base_rate = 19.0028 # mean of (selfunc corrected) unmasked pixels in 'quaia_G20.0_zsplit2bin1_new'
+
+    elif catname == 'quaia_G20.0_zsplit2bin1_oldsf':
         fn_cat = os.path.join(base_dir, f'data/catalogs/quaia/{catname}_masked.npy')
         selfunc_str = 'quaia_G20.0_zsplit2bin1'
         expected_dipole_amp = 0.0055
@@ -242,7 +268,7 @@ def get_catalog_info(catname, base_dir='/work2/08811/aew492/frontera/lss-dipoles
         base_rate = 77.4495 # mean base rate of the final 100 accepted samples for CatWISE, 13 generations
 
     else:
-        raise ValueError("unknown catname")
+        raise ValueError(f"unknown catname: {catname}")
 
     return dict(fn_cat=fn_cat, selfunc_str=selfunc_str, expected_dipole_amp=expected_dipole_amp, base_rate=base_rate)
 
