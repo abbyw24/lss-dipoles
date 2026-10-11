@@ -169,8 +169,9 @@ def measure_dipole_amplitude(sample, Cinv=None, fit_zeros=True, verbose=False, r
     Cinv[idx_masked] = 0. # Cinv is zero in the masked pixels
     
     comps, stderr = fit_dipole_amplitude(map_to_fit, Cinv=Cinv)
-    print("best-fit comps: ", comps)
-    print("stderr: ", stderr)
+    if verbose:
+        print("best-fit comps: ", comps)
+        print("stderr: ", stderr)
 
     # get the dipole amplitude
     dipamp = comps[1] / comps[0]
