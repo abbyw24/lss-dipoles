@@ -28,7 +28,7 @@ def main():
     """
     model = 'dipole_only'
 
-    catname = 'quaia_G20.0_zsplit2bin1'
+    catname = 'catwise_elatcorr'
 
     distance_nside = 2
     nside = 64
@@ -177,7 +177,7 @@ def get_catalog_info(catname, base_dir='/work2/08811/aew492/frontera/lss-dipoles
 
     elif catname == 'quaia_G20.0_oldsf':
         # oldsf refers to the selfunc generated with the incorrect zodi templates!
-        fn_cat = os.path.join(base_dir, f'data/catalogs/quaia/{catname}_masked.npy')
+        fn_cat = os.path.join(base_dir, f'data/catalogs/quaia/quaia_G20.0_masked.npy')
         selfunc_str = 'quaia_G20.0_zodi'
         expected_dipole_amp = 0.0052
         base_rate = 33.6330 # mean base rate of the final 100 accepted samples for Quaia, 14 generations
@@ -201,7 +201,7 @@ def get_catalog_info(catname, base_dir='/work2/08811/aew492/frontera/lss-dipoles
         base_rate = 55.8003  # mean of (selfunc corrected) unmasked pixels in G<20.5 with 'quaia_G20.5_zodi_new'
 
     elif catname == 'quaia_G20.5_oldsf':
-        fn_cat = os.path.join(base_dir, f'data/catalogs/quaia/{catname}_masked.npy')
+        fn_cat = os.path.join(base_dir, f'data/catalogs/quaia/quaia_G20.5_masked.npy')
         selfunc_str = f'quaia_G20.5_zodi'
         expected_dipole_amp = 0.0047
         base_rate = 41.356  # mean of (selfunc corrected) unmasked pixels in G<20.5 with 'quaia_G20.5_orig'
@@ -226,7 +226,7 @@ def get_catalog_info(catname, base_dir='/work2/08811/aew492/frontera/lss-dipoles
 
     elif catname == 'quaia_G20.0_zsplit2bin0_oldsf':
         # oldsf refers to the selfunc generated with the incorrect zodi templates!
-        fn_cat = os.path.join(base_dir, f'data/catalogs/quaia/{catname}_masked.npy')
+        fn_cat = os.path.join(base_dir, f'data/catalogs/quaia/quaia_G20.0_zsplit2bin0_masked.npy')
         selfunc_str = 'quaia_G20.0_zsplit2bin0'
         expected_dipole_amp = 0.0050
         base_rate = 18.081 # mean of (selfunc corrected) unmasked pixels in 'quaia_G20.0_zsplit2bin0'
@@ -238,7 +238,7 @@ def get_catalog_info(catname, base_dir='/work2/08811/aew492/frontera/lss-dipoles
         base_rate = 19.0028 # mean of (selfunc corrected) unmasked pixels in 'quaia_G20.0_zsplit2bin1_new'
 
     elif catname == 'quaia_G20.0_zsplit2bin1_oldsf':
-        fn_cat = os.path.join(base_dir, f'data/catalogs/quaia/{catname}_masked.npy')
+        fn_cat = os.path.join(base_dir, f'data/catalogs/quaia/quaia_G20.0_zsplit2bin1_masked.npy')
         selfunc_str = 'quaia_G20.0_zsplit2bin1'
         expected_dipole_amp = 0.0055
         base_rate = 18.840 # mean of (selfunc corrected) unmasked pixels in 'quaia_G20.0_zsplit2bin1'
@@ -247,25 +247,31 @@ def get_catalog_info(catname, base_dir='/work2/08811/aew492/frontera/lss-dipoles
         fn_cat = os.path.join(base_dir, f'data/catalogs/catwise_agns/catwise_agns_masked.npy')
         selfunc_str = 'catwise_zodi'
         expected_dipole_amp = 0.0074
-        base_rate = 77.4495 # mean base rate of the final 100 accepted samples for CatWISE, 13 generations
+        base_rate = 73.3950 # mean of (selfunc corrected) unmasked pixels in catwise_agns_masked.npy
+
+    elif catname == 'catwise_oldsf':
+        fn_cat = os.path.join(base_dir, f'data/catalogs/catwise_agns/catwise_agns_masked.npy')
+        selfunc_str = 'catwise_zodi_new'
+        expected_dipole_amp = 0.0074
+        base_rate = 72.4465
 
     elif catname == 'catwise_orig':
         fn_cat = os.path.join(base_dir, f'data/catalogs/catwise_agns/catwise_agns_masked.npy')
         selfunc_str = 'catwise'
         expected_dipole_amp = 0.0074
-        base_rate = 77.4495 # mean base rate of the final 100 accepted samples for CatWISE, 13 generations
+        base_rate = 72.4666 
 
     elif catname == 'catwise_elatcorr':
         fn_cat = os.path.join(base_dir, f'data/catalogs/catwise_agns/catwise_agns_masked.npy')
         selfunc_str = 'catwise_elatcorr'
         expected_dipole_amp = 0.0074
-        base_rate = 77.4495 # mean base rate of the final 100 accepted samples for CatWISE, 13 generations
+        base_rate = 57.7475 
 
     elif catname == 'catwise_nosf':
         fn_cat = os.path.join(base_dir, f'data/catalogs/catwise_agns/catwise_agns_masked.npy')
         selfunc_str = 'ones'
         expected_dipole_amp = 0.0074
-        base_rate = 77.4495 # mean base rate of the final 100 accepted samples for CatWISE, 13 generations
+        base_rate = 27.0986
 
     else:
         raise ValueError(f"unknown catname: {catname}")
