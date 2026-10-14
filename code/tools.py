@@ -282,18 +282,17 @@ def filter_max_mocks(fns, max_mocks=None):
 """
 ABC
 """
-def get_kde_1d(history, prior, parameter, **kwargs):
+def get_kde_1d(history, prior, parameter, xmin=None, xmax=None, **kwargs):
 
     df, w = history if type(history) == list else history.get_distribution()
+    xmin = prior[parameter].args[0] if xmin is None else xmin
+    xmax = prior[parameter].args[0] + prior[parameter].args[1] if xmax is None else xmax
     try:
         return pyabc.visualization.kde.kde_1d(pd.concat((df[parameter],), axis=1), w, df[parameter].name,
-                            xmin=prior[parameter].args[0],
-                            xmax=prior[parameter].args[0] + prior[parameter].args[1], **kwargs)
-    except:     # what error with args? something about RV object not being subscriptable
+                            xmin=xmin, xmax=xmax, **kwargs)
+    except TypeError: # 'RV object is not subscriptable'
         return pyabc.visualization.kde.kde_1d(pd.concat((df[parameter],), axis=1), w, df[parameter].name,
-                            xmin=prior[parameter][0],
-                            xmax=prior[parameter][0] + prior[parameter][1], **kwargs)
-
+                            xmin=xmin, xmax=xmax, **kwargs)
 
 def get_kde_2d(history, prior, parameter1, parameter2, **kwargs):
 
@@ -493,6 +492,19 @@ def weighted_quantile(values, weights, quantiles):
     # Interpolate to find quantile values
     return np.interp(quantiles, cumulative_weights, values)
 
+def convert_posterior_levels(pdf, plevels=[0.95, 0.68]):
+    pdf_flat = pdf.ravel()
+    idx = np.argsort(pdf_flat)[::-1]
+    pdf_sorted = pdf_flat[idx]
+    
+    cdf = np.cumsum(pdf_sorted)
+    cdf /= cdf[-1]  # normalize total probability to 1
+    
+    levels = []
+    for p in plevels:
+        levels.append(pdf_sorted[np.searchsorted(cdf, p)])
+    return levels
+
 """ERROR & UNCERTAINTY"""
 # helper function
 def dipamp_err(comps, err):
@@ -508,10 +520,12 @@ def dipamp_err(comps, err):
 
     Returns
     -------
-    dipamp : float
-        Magnitude |D|
-    dr : float
-        Uncertainty in |D|
+    dipamp_std : float
+        Uncertainty in magnitude |D|
+    dtheta : float
+        Uncertainty in theta
+    dphi : float
+        Uncertainty in phi
     """
 
     dipamp = np.linalg.norm(comps)
