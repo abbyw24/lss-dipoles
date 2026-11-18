@@ -31,7 +31,7 @@ from multipoles import multipole_map
 from tools import get_galactic_plane_mask
 
 NSIDE = 64
-RESULTDIR = '/work2/08811/aew492/frontera/lss-dipoles'
+RESULTDIR = '/work/08811/aew492/vista/lss-dipoles'
 
 def generate_mocks_from_cases():
     """

@@ -17,7 +17,7 @@ import generate_mocks as gm
 from abc_for_qso import get_catalog_info, distance, save_accepted_mocks, model_dipole_excess
 from abc_free_dipole import model_free_dipole, model_free_dipole_excess
 
-RESULTDIR = '/work2/08811/aew492/frontera/lss-dipoles/results'
+RESULTDIR = '/scratch/08811/aew492/lss-dipoles_results'
 
 def main():
 

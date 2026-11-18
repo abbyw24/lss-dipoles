@@ -16,7 +16,7 @@ import multipoles
 import generate_mocks as gm
 from abc_for_qso import get_catalog_info, distance, save_accepted_mocks
 
-RESULTDIR = '/scratch/aew492/lss-dipoles_results'
+RESULTDIR = '/scratch/08811/aew492/lss-dipoles_results'
 
 def main():
 
